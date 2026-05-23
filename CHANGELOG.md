@@ -54,6 +54,8 @@
 
 - 新增 GitHub Actions 工作流 `.github/workflows/release.yml`，支持推送 `v*` 标签或手动触发构建。
 - 新增 `app/proguard-rules.pro` 空文件，避免未来启用混淆时构建失败。
+- 新增 Release 签名配置，支持通过环境变量注入 keystore 凭据。
+- 新增 `.gitignore` 规则忽略 `*.jks` 和 `*.keystore` 签名文件。
 
 ### Changed
 
