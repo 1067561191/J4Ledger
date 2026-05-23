@@ -47,3 +47,14 @@
 - 将收入强调色从深黄色调整为绿色，支出继续使用错误色强调。
 - 更新主题配色和字体层级，增强浅色/深色模式下的对比度与可读性。
 - 更新 README、技术文档和关键链路，记录文本记账、Agent 配置、SQLite、构建与设备运行方式。
+
+## 2026-05-23 (GitHub Actions)
+
+### Added
+
+- 新增 GitHub Actions 工作流 `.github/workflows/release.yml`，支持推送 `v*` 标签或手动触发构建。
+- 新增 `app/proguard-rules.pro` 空文件，避免未来启用混淆时构建失败。
+
+### Changed
+
+- 更新关键链路文档，新增 GitHub Actions 发布链路说明。
