@@ -22,7 +22,7 @@ android {
             val keyAlias = System.getenv("KEY_ALIAS") ?: "j4ledger"
             val keyPassword = System.getenv("KEY_PASSWORD") ?: ""
 
-            storeFile = file(keystorePath)
+            storeFile = rootProject.file(keystorePath)
             storePassword = keystorePassword
             this.keyAlias = keyAlias
             this.keyPassword = keyPassword
