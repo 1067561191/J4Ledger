@@ -1,5 +1,18 @@
 # AGENTS.md
 
+## 0. 环境
+
+当前的环境是:
+
+- OS: windows11
+- 命令行: 可能是cmd或者powershell
+- python编程环境：你可以使用uv来使用和管理python虚拟环境，如果本项目需要依赖python辅助构建、测试你应该使用uv在本项目的./.venv创建专属虚拟环境；推荐使用已经存在的python3.12版本
+- nodejs编程环境：你可以使用npm、npx、node等相关命令来运行js脚本
+- Java编程环境：当前是openjdk 17
+  - gradle：使用项目本地的gradle.bat
+- android编程环境：可以使用android cli来管理安卓项目；android sdk目录在D:\soft\Android\Sdk，你可以通过环境遍历ANDROID_HOME获悉
+- c/c++：我在`C:\msys64`安装了MSYS2；`C:\msys64\mingw64\bin`已经加入了PATH环境变量，其下的`gcc` `g++` `clang` `clang++` `cmake` `clang-cl` `gdb`等可执行程序可直接调用；`C:\msys64\usr\bin`也已经加入了PATH环境变量
+
 ## 项目协作约定
 
 本项目目录名为 `J4Ledger`，是通过 Android CLI 创建的 Android 工程。后续开发时先阅读当前目录下的文档和构建配置，再按实际代码状态执行改动。

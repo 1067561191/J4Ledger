@@ -54,7 +54,7 @@ android docs search "Jetpack Compose"
 - `app/`：Android 应用模块。
 - `app/src/main/java/com/example/androidproject/`：应用主代码。当前包名仍保留模板默认值，后续如需正式改包名请同步调整源码目录、`namespace` 和 `applicationId`。
 - `app/src/main/java/com/example/androidproject/data/`：收支账单模型、SQLite 持久化仓储、加密 ZIP 备份导入导出和 OpenAI-compatible Agent 解析实现。
-- `app/src/main/java/com/example/androidproject/ui/main/`：文本消费/收入记账、底部导航、账单日期区间筛选、Dashboard 统计图、长按编辑/删除、Agent 配置、导入配置遮罩锁定、主题模式和数据备份界面。
+- `app/src/main/java/com/example/androidproject/ui/main/`：文本消费/收入记账、底部导航、账单日期区间筛选、Dashboard 统计图、长按编辑/删除、Agent 配置、导入配置遮罩锁定、主题模式、数据备份和主界面视觉组件。
 - `app/src/main/res/`：应用资源文件。
 - `app/src/test/`：本地单元测试。
 - `app/src/androidTest/`：设备或模拟器上的仪器测试。
@@ -92,11 +92,15 @@ android docs search "Jetpack Compose"
 
 ## 账单展示
 
-账单页同时展示消费和收入。消费金额使用 `-` 前缀，收入金额使用 `+` 前缀和深黄色显示；顶部合计按收入减消费展示当前日期筛选净额。
+账单页同时展示消费和收入。消费金额使用 `-` 前缀，收入金额使用 `+` 前缀和绿色强调；顶部概览卡按收入减消费展示当前日期筛选净额，并同步展示收入、支出和筛选日期。
 
 ## Dashboard
 
-底部 `Dashboard` 页复用账单页的日期范围，按当前筛选后的 SQLite 账单实时统计。页面展示每日收支双折线、消费分类饼图、收入分类饼图、渠道收支双柱状图和收入支出占比饼图，不展示 KPI 卡片。
+底部 `Dashboard` 页复用账单页的日期范围，按当前筛选后的 SQLite 账单实时统计。页面展示收入、支出、净额和账单数 KPI 卡片，并提供每日收支双折线、消费分类饼图、收入分类饼图、渠道收支双柱状图和收入支出占比饼图。
+
+## 界面体验
+
+主界面采用 Material 3 主题、克制的蓝/绿/琥珀强调色和高对比浅/深色配色。底部导航使用 Material 图标，页面切换包含滑动、淡入淡出和轻微缩放，主要按钮和账单卡片提供按压反馈，图表区域使用统一卡片、图例和留白。
 
 ## 显示模式
 

@@ -4,19 +4,27 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,20 +32,47 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -52,12 +87,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -123,16 +163,21 @@ private fun MainScreenContent(
   modifier: Modifier = Modifier,
 ) {
   var selectedTab by rememberSaveable { mutableStateOf(MainTab.Record) }
+  val colorScheme = MaterialTheme.colorScheme
 
   Scaffold(
     modifier = modifier.fillMaxSize(),
+    containerColor = Color.Transparent,
     bottomBar = {
-      NavigationBar {
+      NavigationBar(
+        containerColor = colorScheme.surface.copy(alpha = 0.96f),
+        tonalElevation = 8.dp,
+      ) {
         MainTab.entries.forEach { tab ->
           NavigationBarItem(
             selected = selectedTab == tab,
             onClick = { selectedTab = tab },
-            icon = { Text(tab.icon, fontWeight = FontWeight.SemiBold) },
+            icon = { Icon(tab.icon, contentDescription = null) },
             label = { Text(tab.title) },
             alwaysShowLabel = true,
           )
@@ -140,29 +185,61 @@ private fun MainScreenContent(
       }
     },
   ) { innerPadding ->
-    Column(
-      modifier = Modifier.fillMaxSize().padding(innerPadding),
-      verticalArrangement = Arrangement.spacedBy(14.dp),
+    Box(
+      modifier =
+        Modifier
+          .fillMaxSize()
+          .background(
+            Brush.verticalGradient(
+              listOf(
+                colorScheme.background,
+                colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                colorScheme.background,
+              )
+            )
+          )
+          .padding(innerPadding),
     ) {
-      Header(title = state.appTitle, totalText = state.totalText)
-      ProvideVicoTheme(theme = rememberM3VicoTheme()) {
-        AnimatedContent(
-          targetState = selectedTab,
-          label = "main-tab-transition",
-          transitionSpec = {
-            val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-            (slideInHorizontally(animationSpec = tween(260)) { width -> direction * width / 4 } + fadeIn(tween(220)))
-              .togetherWith(slideOutHorizontally(animationSpec = tween(220)) { width -> -direction * width / 4 } + fadeOut(tween(180)))
-              .using(SizeTransform(clip = false))
-          },
-          modifier = Modifier.weight(1f),
-        ) { tab ->
-          Box(modifier = Modifier.fillMaxSize()) {
-            when (tab) {
-              MainTab.Record -> RecordPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-              MainTab.Bills -> BillsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-              MainTab.Dashboard -> DashboardPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-              MainTab.Settings -> SettingsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+      Column(
+        modifier =
+          Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        Header(state = state)
+        ProvideVicoTheme(theme = rememberM3VicoTheme()) {
+          AnimatedContent(
+            targetState = selectedTab,
+            label = "main-tab-transition",
+            transitionSpec = {
+              val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+              (
+                slideInHorizontally(animationSpec = tween(300, easing = FastOutSlowInEasing)) { width ->
+                  direction * width / 5
+                } +
+                  fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                  scaleIn(initialScale = 0.98f, animationSpec = tween(300, easing = FastOutSlowInEasing))
+                )
+                .togetherWith(
+                  slideOutHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { width ->
+                    -direction * width / 6
+                  } +
+                    fadeOut(tween(160, easing = FastOutSlowInEasing)) +
+                    scaleOut(targetScale = 0.99f, animationSpec = tween(180, easing = FastOutSlowInEasing))
+                )
+                .using(SizeTransform(clip = false))
+            },
+            modifier = Modifier.weight(1f),
+          ) { tab ->
+            Box(modifier = Modifier.fillMaxSize()) {
+              when (tab) {
+                MainTab.Record -> RecordPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+                MainTab.Bills -> BillsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+                MainTab.Dashboard -> DashboardPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+                MainTab.Settings -> SettingsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+              }
             }
           }
         }
@@ -172,10 +249,115 @@ private fun MainScreenContent(
 }
 
 @Composable
-private fun Header(title: String, totalText: String) {
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Text(title.ifBlank { "J4Ledger" }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-    Text("当前筛选净额 ¥$totalText", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+private fun Header(state: MainScreenUiState) {
+  val stats = state.dashboardStats
+  val incomeTotal = stats.dailySeries.sumOf { it.incomeCents }
+  val expenseTotal = stats.dailySeries.sumOf { it.expenseCents }
+  val isNegative = state.totalText.startsWith("-")
+  val netColor = if (isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 3.dp),
+  ) {
+    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Box(
+          modifier =
+            Modifier
+              .size(48.dp)
+              .clip(CircleShape)
+              .background(MaterialTheme.colorScheme.primaryContainer),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+            imageVector = Icons.Default.AccountBalanceWallet,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+          )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+          Text(
+            state.appTitle.ifBlank { "J4Ledger" },
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+          Text(
+            "${state.filter.startDate} 至 ${state.filter.endDate}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+      }
+      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("当前筛选净额", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+          netYuanText(state.totalText),
+          style = MaterialTheme.typography.displaySmall,
+          fontWeight = FontWeight.Bold,
+          color = netColor,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SummaryMetric(
+          label = "收入",
+          value = "¥${incomeTotal.asYuanText()}",
+          icon = Icons.AutoMirrored.Filled.TrendingUp,
+          color = IncomeAccent,
+          modifier = Modifier.weight(1f),
+        )
+        SummaryMetric(
+          label = "支出",
+          value = "¥${expenseTotal.asYuanText()}",
+          icon = Icons.AutoMirrored.Filled.TrendingDown,
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.weight(1f),
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun SummaryMetric(
+  label: String,
+  value: String,
+  icon: ImageVector,
+  color: Color,
+  modifier: Modifier = Modifier,
+) {
+  Surface(
+    modifier = modifier.heightIn(min = 64.dp),
+    shape = AppCardShape,
+    color = color.copy(alpha = 0.08f),
+    border = BorderStroke(1.dp, color.copy(alpha = 0.14f)),
+  ) {
+    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+      Text(
+        value,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
   }
 }
 
@@ -185,32 +367,181 @@ private fun RecordPane(
   viewModel: MainScreenViewModel,
   modifier: Modifier = Modifier,
 ) {
-  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    OutlinedTextField(
-      value = state.transcript,
-      onValueChange = viewModel::updateTranscript,
-      label = { Text("消费内容") },
-      placeholder = { Text("例如：今天用微信支付 28 元买咖啡 （最好包含 用途、支付渠道、支付金额、日期）") },
-      modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-      minLines = 4,
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-      Button(onClick = viewModel::submitTranscript, enabled = !state.isProcessing) { Text("记消费") }
-      if (state.isProcessing) CircularProgressIndicator(modifier = Modifier.height(28.dp).width(28.dp), strokeWidth = 3.dp)
+  LazyColumn(
+    modifier = modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+    contentPadding = PaddingValues(bottom = 20.dp),
+  ) {
+    item {
+      SectionHeader(title = "快速记账", subtitle = "自然语言输入，Agent 解析后写入本地账本")
     }
-    OutlinedTextField(
-      value = state.incomeTranscript,
-      onValueChange = viewModel::updateIncomeTranscript,
-      label = { Text("收入内容") },
-      placeholder = { Text("例如：今天银行卡到账 8000 元工资 （最好包含 收入类型、收款渠道、金额、日期时间）") },
-      modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-      minLines = 4,
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-      Button(onClick = viewModel::submitIncomeTranscript, enabled = !state.isProcessing) { Text("记收入") }
-      if (state.isProcessing) CircularProgressIndicator(modifier = Modifier.height(28.dp).width(28.dp), strokeWidth = 3.dp)
+    item {
+      EntryComposerCard(
+        title = "记一笔消费",
+        subtitle = "用途、渠道、金额和日期写在一句话里即可",
+        value = state.transcript,
+        onValueChange = viewModel::updateTranscript,
+        label = "消费内容",
+        placeholder = "例如：今天用微信支付 28 元买咖啡",
+        icon = Icons.Default.Payments,
+        accentColor = MaterialTheme.colorScheme.primary,
+        buttonText = "记消费",
+        onSubmit = viewModel::submitTranscript,
+        isProcessing = state.isProcessing,
+      )
     }
-    Text(state.statusMessage, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    item {
+      EntryComposerCard(
+        title = "记一笔收入",
+        subtitle = "工资、转账、退款等收入也可以直接记录",
+        value = state.incomeTranscript,
+        onValueChange = viewModel::updateIncomeTranscript,
+        label = "收入内容",
+        placeholder = "例如：今天银行卡到账 8000 元工资",
+        icon = Icons.Default.Savings,
+        accentColor = IncomeAccent,
+        buttonText = "记收入",
+        onSubmit = viewModel::submitIncomeTranscript,
+        isProcessing = state.isProcessing,
+      )
+    }
+    item {
+      StatusMessageCard(message = state.statusMessage, isProcessing = state.isProcessing)
+    }
+  }
+}
+
+@Composable
+private fun SectionHeader(title: String, subtitle: String? = null) {
+  Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    if (subtitle != null) {
+      Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+  }
+}
+
+@Composable
+private fun EntryComposerCard(
+  title: String,
+  subtitle: String,
+  value: String,
+  onValueChange: (String) -> Unit,
+  label: String,
+  placeholder: String,
+  icon: ImageVector,
+  accentColor: Color,
+  buttonText: String,
+  onSubmit: () -> Unit,
+  isProcessing: Boolean,
+) {
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+  ) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier = Modifier.size(40.dp).clip(CircleShape).background(accentColor.copy(alpha = 0.12f)),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(22.dp))
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+          Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+          Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+      }
+      OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 118.dp),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+        minLines = 4,
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        PressableButton(
+          text = buttonText,
+          icon = Icons.Default.AddCircle,
+          onClick = onSubmit,
+          enabled = !isProcessing,
+          containerColor = accentColor,
+          modifier = Modifier.weight(1f),
+        )
+        if (isProcessing) {
+          CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp, color = accentColor)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun StatusMessageCard(message: String, isProcessing: Boolean) {
+  Surface(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.32f)),
+  ) {
+    Row(
+      modifier = Modifier.padding(14.dp),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      if (isProcessing) {
+        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+      } else {
+        Icon(
+          imageVector = Icons.Default.Info,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.size(20.dp),
+        )
+      }
+      Text(
+        message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.weight(1f),
+      )
+    }
+  }
+}
+
+@Composable
+private fun PressableButton(
+  text: String,
+  icon: ImageVector,
+  onClick: () -> Unit,
+  enabled: Boolean,
+  containerColor: Color,
+  modifier: Modifier = Modifier,
+) {
+  val interactionSource = remember { MutableInteractionSource() }
+  val isPressed by interactionSource.collectIsPressedAsState()
+  val scale by animateFloatAsState(
+    targetValue = if (isPressed) 0.975f else 1f,
+    animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+    label = "button-press-scale",
+  )
+
+  Button(
+    onClick = onClick,
+    enabled = enabled,
+    interactionSource = interactionSource,
+    modifier = modifier.heightIn(min = 48.dp).scale(scale),
+    shape = AppCardShape,
+    colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = Color.White),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+  ) {
+    Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
+    Spacer(Modifier.width(8.dp))
+    Text(text, fontWeight = FontWeight.SemiBold)
   }
 }
 
@@ -222,12 +553,22 @@ private fun BillsPane(
 ) {
   var editingEntry by remember { mutableStateOf<LedgerEntry?>(null) }
 
-  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "账单日期")
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-      if (state.entries.isEmpty()) {
-        item { Text("这个日期范围内还没有账单", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+  LazyColumn(
+    modifier = modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+    contentPadding = PaddingValues(bottom = 20.dp),
+  ) {
+    item { DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "账单日期") }
+    item { SectionHeader(title = "账单明细", subtitle = "${state.entries.size} 条记录，长按可编辑") }
+    if (state.entries.isEmpty()) {
+      item {
+        EmptyStateCard(
+          icon = Icons.AutoMirrored.Filled.ReceiptLong,
+          title = "这个日期范围内还没有账单",
+          body = "记录一笔消费或收入后，这里会按时间展示明细。",
+        )
       }
+    } else {
       items(state.entries, key = { it.id }) { entry ->
         LedgerEntryCard(entry = entry, onLongPress = { editingEntry = it })
       }
@@ -255,20 +596,84 @@ private fun BillsPane(
 private fun LedgerEntryCard(entry: LedgerEntry, onLongPress: (LedgerEntry) -> Unit) {
   val isIncome = entry.type == LedgerEntryType.Income
   val amountPrefix = if (isIncome) "+¥" else "-¥"
-  val amountColor = if (isIncome) DeepIncomeYellow else MaterialTheme.colorScheme.error
+  val amountColor = if (isIncome) IncomeAccent else MaterialTheme.colorScheme.error
+  val typeIcon = if (isIncome) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown
+  val interactionSource = remember { MutableInteractionSource() }
+  val isPressed by interactionSource.collectIsPressedAsState()
+  val scale by animateFloatAsState(
+    targetValue = if (isPressed) 0.99f else 1f,
+    animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+    label = "ledger-card-press-scale",
+  )
+
   ElevatedCard(
     modifier =
       Modifier
         .fillMaxWidth()
-        .combinedClickable(onClick = {}, onLongClick = { onLongPress(entry) })
+        .scale(scale)
+        .combinedClickable(
+          interactionSource = interactionSource,
+          indication = null,
+          onClick = {},
+          onLongClick = { onLongPress(entry) },
+        ),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
   ) {
-    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(entry.description, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-        Text("$amountPrefix${entry.amountCents.asYuanText()}", style = MaterialTheme.typography.titleMedium, color = amountColor)
+    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Box(
+          modifier = Modifier.size(42.dp).clip(CircleShape).background(amountColor.copy(alpha = 0.1f)),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(imageVector = typeIcon, contentDescription = null, tint = amountColor, modifier = Modifier.size(22.dp))
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Text(
+            entry.description,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+          Text(
+            "${entry.localDateTimeText()} · ${entry.type.label} · ${entry.channel} · ${entry.category}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+        Text(
+          "$amountPrefix${entry.amountCents.asYuanText()}",
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.SemiBold,
+          color = amountColor,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
       }
-      Text("${entry.localDateTimeText()} · ${entry.type.label} · ${entry.channel} · ${entry.category}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-      if (entry.rawText.isNotBlank()) Text(entry.rawText, style = MaterialTheme.typography.bodySmall)
+      if (entry.rawText.isNotBlank()) {
+        Surface(
+          modifier = Modifier.fillMaxWidth(),
+          shape = AppCardShape,
+          color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ) {
+          Text(
+            entry.rawText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+      }
     }
   }
 }
@@ -350,17 +755,35 @@ private fun DashboardPane(
 ) {
   val stats = state.dashboardStats
   val expenseColor = MaterialTheme.colorScheme.error
-  val incomeColor = DeepIncomeYellow
+  val incomeColor = IncomeAccent
 
-  LazyColumn(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+  LazyColumn(
+    modifier = modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+    contentPadding = PaddingValues(bottom = 20.dp),
+  ) {
     item {
       DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "Dashboard 日期")
+    }
+    item {
+      DashboardMetrics(
+        stats = stats,
+        netText = state.totalText,
+        entryCount = state.entries.size,
+        expenseColor = expenseColor,
+        incomeColor = incomeColor,
+      )
     }
     if (!stats.hasAnyEntries) {
       item { EmptyDashboardCard() }
     } else {
       item {
-        DashboardChartCard(title = "每日收支趋势", hasData = stats.dailySeries.isNotEmpty()) {
+        DashboardChartCard(
+          title = "每日收支趋势",
+          subtitle = "消费与收入的时间序列",
+          icon = Icons.Default.BarChart,
+          hasData = stats.dailySeries.isNotEmpty(),
+        ) {
           DailyTrendChart(points = stats.dailySeries, expenseColor = expenseColor, incomeColor = incomeColor)
           ChartLegend(
             items =
@@ -373,20 +796,35 @@ private fun DashboardPane(
       }
       item {
         val colors = dashboardPalette(expenseColor, incomeColor)
-        DashboardChartCard(title = "消费分类占比", hasData = stats.expenseByCategory.isNotEmpty()) {
+        DashboardChartCard(
+          title = "消费分类占比",
+          subtitle = "看清钱主要花在哪些地方",
+          icon = Icons.Default.PieChart,
+          hasData = stats.expenseByCategory.isNotEmpty(),
+        ) {
           BreakdownPieChart(items = stats.expenseByCategory, colors = colors)
           BreakdownLegend(items = stats.expenseByCategory, colors = colors)
         }
       }
       item {
         val colors = dashboardPalette(incomeColor, expenseColor)
-        DashboardChartCard(title = "收入分类占比", hasData = stats.incomeByCategory.isNotEmpty()) {
+        DashboardChartCard(
+          title = "收入分类占比",
+          subtitle = "不同收入来源的结构",
+          icon = Icons.Default.PieChart,
+          hasData = stats.incomeByCategory.isNotEmpty(),
+        ) {
           BreakdownPieChart(items = stats.incomeByCategory, colors = colors)
           BreakdownLegend(items = stats.incomeByCategory, colors = colors)
         }
       }
       item {
-        DashboardChartCard(title = "渠道收支对比", hasData = stats.channelBreakdown.isNotEmpty()) {
+        DashboardChartCard(
+          title = "渠道收支对比",
+          subtitle = "按支付或收款渠道对比",
+          icon = Icons.Default.QueryStats,
+          hasData = stats.channelBreakdown.isNotEmpty(),
+        ) {
           ChannelComparisonChart(items = stats.channelBreakdown, expenseColor = expenseColor, incomeColor = incomeColor)
           ChartLegend(
             items =
@@ -400,7 +838,12 @@ private fun DashboardPane(
       }
       item {
         val colors = listOf(incomeColor, expenseColor)
-        DashboardChartCard(title = "收入支出占比", hasData = stats.incomeExpenseBreakdown.isNotEmpty()) {
+        DashboardChartCard(
+          title = "收入支出占比",
+          subtitle = "本期资金流入与流出",
+          icon = Icons.Default.AccountBalanceWallet,
+          hasData = stats.incomeExpenseBreakdown.isNotEmpty(),
+        ) {
           BreakdownPieChart(items = stats.incomeExpenseBreakdown, colors = colors)
           BreakdownLegend(items = stats.incomeExpenseBreakdown, colors = colors)
         }
@@ -410,24 +853,122 @@ private fun DashboardPane(
 }
 
 @Composable
-private fun EmptyDashboardCard() {
-  ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      Text("暂无统计数据", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-      Text("当前日期范围内还没有账单", color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun DashboardMetrics(
+  stats: DashboardStats,
+  netText: String,
+  entryCount: Int,
+  expenseColor: Color,
+  incomeColor: Color,
+) {
+  val incomeTotal = stats.dailySeries.sumOf { it.incomeCents }
+  val expenseTotal = stats.dailySeries.sumOf { it.expenseCents }
+  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+      DashboardMetricCard(
+        label = "收入",
+        value = "¥${incomeTotal.asYuanText()}",
+        icon = Icons.AutoMirrored.Filled.TrendingUp,
+        color = incomeColor,
+        modifier = Modifier.weight(1f),
+      )
+      DashboardMetricCard(
+        label = "支出",
+        value = "¥${expenseTotal.asYuanText()}",
+        icon = Icons.AutoMirrored.Filled.TrendingDown,
+        color = expenseColor,
+        modifier = Modifier.weight(1f),
+      )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+      DashboardMetricCard(
+        label = "净额",
+        value = netYuanText(netText),
+        icon = Icons.Default.AccountBalanceWallet,
+        color = if (netText.startsWith("-")) expenseColor else MaterialTheme.colorScheme.primary,
+        modifier = Modifier.weight(1f),
+      )
+      DashboardMetricCard(
+        label = "账单",
+        value = "${entryCount} 条",
+        icon = Icons.AutoMirrored.Filled.ReceiptLong,
+        color = MaterialTheme.colorScheme.tertiary,
+        modifier = Modifier.weight(1f),
+      )
     }
   }
 }
 
 @Composable
+private fun DashboardMetricCard(
+  label: String,
+  value: String,
+  icon: ImageVector,
+  color: Color,
+  modifier: Modifier = Modifier,
+) {
+  Card(
+    modifier = modifier.heightIn(min = 86.dp),
+    shape = AppCardShape,
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+  ) {
+    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+      Text(
+        value,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+@Composable
+private fun EmptyDashboardCard() {
+  EmptyStateCard(
+    icon = Icons.Default.QueryStats,
+    title = "暂无统计数据",
+    body = "当前日期范围内还没有账单，图表会在有数据后自动呈现。",
+  )
+}
+
+@Composable
 private fun DashboardChartCard(
   title: String,
+  subtitle: String,
+  icon: ImageVector,
   hasData: Boolean,
   content: @Composable ColumnScope.() -> Unit,
 ) {
-  ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+  ) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier =
+            Modifier
+              .size(40.dp)
+              .clip(CircleShape)
+              .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+          Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+          Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+      }
       if (hasData) {
         content()
       } else {
@@ -461,16 +1002,18 @@ private fun DailyTrendChart(
       LineCartesianLayer.rememberLine(LineCartesianLayer.LineFill.single(Fill(expenseColor))),
       LineCartesianLayer.rememberLine(LineCartesianLayer.LineFill.single(Fill(incomeColor))),
     )
-  CartesianChartHost(
-    chart =
-      rememberCartesianChart(
-        rememberLineCartesianLayer(lineProvider = lineProvider),
-        startAxis = VerticalAxis.rememberStart(valueFormatter = yuanAxisFormatter()),
-        bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = dateAxisFormatter(points.map { it.date })),
-      ),
-    modelProducer = modelProducer,
-    modifier = Modifier.fillMaxWidth().height(220.dp),
-  )
+  ChartCanvas(height = 236.dp) {
+    CartesianChartHost(
+      chart =
+        rememberCartesianChart(
+          rememberLineCartesianLayer(lineProvider = lineProvider),
+          startAxis = VerticalAxis.rememberStart(valueFormatter = yuanAxisFormatter()),
+          bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = dateAxisFormatter(points.map { it.date })),
+        ),
+      modelProducer = modelProducer,
+      modifier = Modifier.fillMaxSize(),
+    )
+  }
 }
 
 @Composable
@@ -497,16 +1040,18 @@ private fun ChannelComparisonChart(
       rememberLineComponent(Fill(expenseColor), 12.dp),
       rememberLineComponent(Fill(incomeColor), 12.dp),
     )
-  CartesianChartHost(
-    chart =
-      rememberCartesianChart(
-        rememberColumnCartesianLayer(columnProvider = columnProvider),
-        startAxis = VerticalAxis.rememberStart(valueFormatter = yuanAxisFormatter()),
-        bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = channelAxisFormatter(items.map { it.channel })),
-      ),
-    modelProducer = modelProducer,
-    modifier = Modifier.fillMaxWidth().height(220.dp),
-  )
+  ChartCanvas(height = 236.dp) {
+    CartesianChartHost(
+      chart =
+        rememberCartesianChart(
+          rememberColumnCartesianLayer(columnProvider = columnProvider),
+          startAxis = VerticalAxis.rememberStart(valueFormatter = yuanAxisFormatter()),
+          bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = channelAxisFormatter(items.map { it.channel })),
+        ),
+      modelProducer = modelProducer,
+      modifier = Modifier.fillMaxSize(),
+    )
+  }
 }
 
 @Composable
@@ -523,11 +1068,30 @@ private fun BreakdownPieChart(
   }
   val sliceProvider =
     PieChart.SliceProvider.series(colors.map { color -> PieChart.Slice(fill = Fill(color)) })
-  PieChartHost(
-    chart = rememberPieChart(sliceProvider = sliceProvider, spacing = 2.dp),
-    modelProducer = modelProducer,
-    modifier = Modifier.fillMaxWidth().height(190.dp),
-  )
+  ChartCanvas(height = 210.dp) {
+    PieChartHost(
+      chart = rememberPieChart(sliceProvider = sliceProvider, spacing = 2.dp),
+      modelProducer = modelProducer,
+      modifier = Modifier.fillMaxSize(),
+    )
+  }
+}
+
+@Composable
+private fun ChartCanvas(
+  height: androidx.compose.ui.unit.Dp,
+  content: @Composable () -> Unit,
+) {
+  Surface(
+    modifier = Modifier.fillMaxWidth().height(height),
+    shape = AppCardShape,
+    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+  ) {
+    Box(modifier = Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) {
+      content()
+    }
+  }
 }
 
 @Composable
@@ -559,12 +1123,22 @@ private fun ChannelLegend(items: List<ChannelAmountBreakdown>) {
 
 @Composable
 private fun LegendRow(label: String, color: Color, amountCents: Long) {
-  Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-      Box(modifier = Modifier.height(10.dp).width(10.dp).background(color = color, shape = MaterialTheme.shapes.small))
-      Text(label, style = MaterialTheme.typography.bodyMedium)
+  Surface(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.size(10.dp).background(color = color, shape = CircleShape))
+        Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+      }
+      Text("¥${amountCents.asYuanText()}", style = MaterialTheme.typography.bodyMedium, color = color, fontWeight = FontWeight.SemiBold)
     }
-    Text("¥${amountCents.asYuanText()}", style = MaterialTheme.typography.bodyMedium, color = color)
   }
 }
 
@@ -573,12 +1147,12 @@ private fun dashboardPalette(primary: Color, secondary: Color): List<Color> =
   listOf(
     primary,
     secondary,
-    MaterialTheme.colorScheme.primary,
-    MaterialTheme.colorScheme.tertiary,
-    MaterialTheme.colorScheme.secondary,
-    MaterialTheme.colorScheme.outline,
-    MaterialTheme.colorScheme.primaryContainer,
-    MaterialTheme.colorScheme.tertiaryContainer,
+    Color(0xFF2563EB),
+    Color(0xFF14B8A6),
+    Color(0xFFF59E0B),
+    Color(0xFF8B5CF6),
+    Color(0xFF64748B),
+    Color(0xFFDB2777),
   )
 
 private fun yuanAxisFormatter(): CartesianValueFormatter =
@@ -652,145 +1226,164 @@ private fun SettingsPane(
       }
     }
 
-  LazyColumn(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+  LazyColumn(
+    modifier = modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+    contentPadding = PaddingValues(bottom = 20.dp),
+  ) {
     item {
-      Text(
-        "Agent 使用 OpenAI-compatible Chat Completions：base_url 通常填到 /v1，例如 https://api.openai.com/v1。",
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
-    item {
-      OutlinedTextField(
-        value = state.settings.appTitle,
-        onValueChange = viewModel::updateAppTitle,
-        label = { Text("界面标题") },
-        placeholder = { Text("J4Ledger") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-      )
-    }
-    item {
-      OutlinedTextField(
-        value = state.settings.baseUrl.maskIfImported(isImportedSettings),
-        onValueChange = viewModel::updateBaseUrl,
-        label = { Text("base_url") },
-        placeholder = { Text("https://api.example.com/v1") },
-        singleLine = true,
-        enabled = !isImportedSettings,
-        readOnly = isImportedSettings,
-        modifier = Modifier.fillMaxWidth(),
-      )
-    }
-    item {
-      OutlinedTextField(
-        value = state.settings.apiKey.maskIfImported(isImportedSettings),
-        onValueChange = viewModel::updateApiKey,
-        label = { Text("api_key") },
-        singleLine = true,
-        enabled = !isImportedSettings,
-        readOnly = isImportedSettings,
-        visualTransformation = if (isImportedSettings) VisualTransformation.None else PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
-      )
-    }
-    item {
-      OutlinedTextField(
-        value = state.settings.modelName.maskIfImported(isImportedSettings),
-        onValueChange = viewModel::updateModelName,
-        label = { Text("model_name") },
-        placeholder = { Text("gpt-4.1-mini") },
-        singleLine = true,
-        enabled = !isImportedSettings,
-        readOnly = isImportedSettings,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-        modifier = Modifier.fillMaxWidth(),
-      )
-    }
-    if (isImportedSettings) {
-      item {
-        Text("当前 Agent 配置来自导入文件，敏感字段已遮罩且不可编辑。需要修改时请重新导入配置，或先重置清空。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-      }
-    }
-    item {
-      Text("显示模式", style = MaterialTheme.typography.labelLarge)
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        AppThemeMode.entries.forEach { mode ->
-          FilterChip(
-            selected = state.settings.themeMode == mode,
-            onClick = { viewModel.updateThemeMode(mode) },
-            label = { Text(mode.label) },
+      SettingsSectionCard(title = "Agent 配置", icon = Icons.Default.Tune) {
+        Text(
+          "OpenAI-compatible Chat Completions：base_url 通常填到 /v1。",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+          value = state.settings.appTitle,
+          onValueChange = viewModel::updateAppTitle,
+          label = { Text("界面标题") },
+          placeholder = { Text("J4Ledger") },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+          value = state.settings.baseUrl.maskIfImported(isImportedSettings),
+          onValueChange = viewModel::updateBaseUrl,
+          label = { Text("base_url") },
+          placeholder = { Text("https://api.example.com/v1") },
+          singleLine = true,
+          enabled = !isImportedSettings,
+          readOnly = isImportedSettings,
+          modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+          value = state.settings.apiKey.maskIfImported(isImportedSettings),
+          onValueChange = viewModel::updateApiKey,
+          label = { Text("api_key") },
+          singleLine = true,
+          enabled = !isImportedSettings,
+          readOnly = isImportedSettings,
+          visualTransformation = if (isImportedSettings) VisualTransformation.None else PasswordVisualTransformation(),
+          modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+          value = state.settings.modelName.maskIfImported(isImportedSettings),
+          onValueChange = viewModel::updateModelName,
+          label = { Text("model_name") },
+          placeholder = { Text("gpt-4.1-mini") },
+          singleLine = true,
+          enabled = !isImportedSettings,
+          readOnly = isImportedSettings,
+          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+          modifier = Modifier.fillMaxWidth(),
+        )
+        if (isImportedSettings) {
+          Text(
+            "当前 Agent 配置来自导入文件，敏感字段已遮罩且不可编辑。需要修改时请重新导入配置，或先重置清空。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
-      }
-    }
-    item {
-      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        Button(onClick = viewModel::saveSettings, modifier = Modifier.weight(1f)) { Text("保存配置") }
-        TextButton(onClick = viewModel::resetSettings, modifier = Modifier.weight(1f)) { Text("重置") }
-      }
-      Spacer(Modifier.height(12.dp))
-      HorizontalDivider()
-      Spacer(Modifier.height(12.dp))
-      Text("接口需要支持 tool_calls。未配置或服务不可用时，应用会提示你检查配置，不会自动套用本地规则。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    item {
-      HorizontalDivider()
-      Spacer(Modifier.height(12.dp))
-      Text("数据备份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-    }
-    item {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = exportEntries, onCheckedChange = { exportEntries = it })
-        Text("导出账单数据")
-      }
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = exportSettings, onCheckedChange = { exportSettings = it })
-        Text("导出设置")
-      }
-    }
-    if (exportEntries) {
-      item {
-        DateRangeSelector(
-          filter = LedgerFilter(exportStartDate, exportEndDate),
-          onRangeChange = {
-            exportStartDate = it.startDate
-            exportEndDate = it.endDate
-          },
-          title = "导出账单日期",
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+          PressableButton(
+            text = "保存配置",
+            icon = Icons.Default.Check,
+            onClick = viewModel::saveSettings,
+            enabled = true,
+            containerColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+          )
+          OutlinedButton(
+            onClick = viewModel::resetSettings,
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            shape = AppCardShape,
+          ) {
+            Icon(imageVector = Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("重置")
+          }
+        }
+        HorizontalDivider()
+        Text(
+          "接口需要支持 tool_calls。未配置或服务不可用时，应用会提示检查配置。",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
     }
     item {
-      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        Button(
-          onClick = {
-            runCatching {
-                viewModel.exportBackup(
-                  BackupOptions(
-                    includeEntries = exportEntries,
-                    includeSettings = exportSettings,
-                    entryFilter = LedgerFilter(exportStartDate, exportEndDate),
-                  )
-                )
-              }
-              .onSuccess {
-                pendingExportBytes = it
-                createDocumentLauncher.launch("j4ledger-backup-${LocalDate.now()}.zip")
-              }
-              .onFailure { viewModel.setStatusMessage(it.message ?: "导出失败") }
-          },
-          modifier = Modifier.weight(1f),
-        ) {
-          Text("导出")
-        }
-        Button(
-          onClick = { openDocumentLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-          modifier = Modifier.weight(1f),
-        ) {
-          Text("覆盖导入")
+      SettingsSectionCard(title = "外观", icon = Icons.Default.Settings) {
+        Text("显示模式", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+          AppThemeMode.entries.forEach { mode ->
+            FilterChip(
+              selected = state.settings.themeMode == mode,
+              onClick = { viewModel.updateThemeMode(mode) },
+              label = { Text(mode.label) },
+            )
+          }
         }
       }
-      Text("导入会解压并解密 ZIP 备份，覆盖文件中包含的原有设置或账单数据。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    item {
+      SettingsSectionCard(title = "数据备份", icon = Icons.Default.UploadFile) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Checkbox(checked = exportEntries, onCheckedChange = { exportEntries = it })
+          Text("导出账单数据")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Checkbox(checked = exportSettings, onCheckedChange = { exportSettings = it })
+          Text("导出设置")
+        }
+        if (exportEntries) {
+          DateRangeSelector(
+            filter = LedgerFilter(exportStartDate, exportEndDate),
+            onRangeChange = {
+              exportStartDate = it.startDate
+              exportEndDate = it.endDate
+            },
+            title = "导出账单日期",
+          )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+          PressableButton(
+            text = "导出",
+            icon = Icons.Default.Download,
+            onClick = {
+              runCatching {
+                  viewModel.exportBackup(
+                    BackupOptions(
+                      includeEntries = exportEntries,
+                      includeSettings = exportSettings,
+                      entryFilter = LedgerFilter(exportStartDate, exportEndDate),
+                    )
+                  )
+                }
+                .onSuccess {
+                  pendingExportBytes = it
+                  createDocumentLauncher.launch("j4ledger-backup-${LocalDate.now()}.zip")
+                }
+                .onFailure { viewModel.setStatusMessage(it.message ?: "导出失败") }
+            },
+            enabled = true,
+            containerColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+          )
+          PressableButton(
+            text = "覆盖导入",
+            icon = Icons.Default.UploadFile,
+            onClick = { openDocumentLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+            enabled = true,
+            containerColor = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.weight(1f),
+          )
+        }
+        Text(
+          "导入会解压并解密 ZIP 备份，覆盖文件中包含的原有设置或账单数据。",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
     }
   }
 
@@ -832,23 +1425,77 @@ private fun SettingsPane(
 }
 
 @Composable
+private fun SettingsSectionCard(
+  title: String,
+  icon: ImageVector,
+  content: @Composable ColumnScope.() -> Unit,
+) {
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+  ) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier =
+            Modifier
+              .size(40.dp)
+              .clip(CircleShape)
+              .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        }
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      }
+      content()
+    }
+  }
+}
+
+@Composable
 private fun DateRangeSelector(
   filter: LedgerFilter,
   onRangeChange: (LedgerFilter) -> Unit,
   title: String,
 ) {
   var showDialog by rememberSaveable { mutableStateOf(false) }
-  ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+  ) {
     Row(
-      modifier = Modifier.fillMaxWidth().padding(12.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
+      modifier = Modifier.fillMaxWidth().padding(14.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge)
-        Text("${filter.startDate} 至 ${filter.endDate}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+      Box(
+        modifier =
+          Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(imageVector = Icons.Default.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
       }
-      Button(onClick = { showDialog = true }) { Text("选择") }
+      Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+          "${filter.startDate} 至 ${filter.endDate}",
+          style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      OutlinedButton(onClick = { showDialog = true }, shape = AppCardShape, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)) {
+        Text("选择")
+      }
     }
   }
 
@@ -941,7 +1588,40 @@ private fun QuickRangeRows(onSelect: (LedgerFilter) -> Unit) {
 
 @Composable
 private fun QuickRangeButton(label: String, range: QuickRange, onSelect: (LedgerFilter) -> Unit) {
-  Button(onClick = { onSelect(range.toFilter()) }) { Text(label) }
+  FilterChip(selected = false, onClick = { onSelect(range.toFilter()) }, label = { Text(label) })
+}
+
+@Composable
+private fun EmptyStateCard(
+  icon: ImageVector,
+  title: String,
+  body: String,
+) {
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+  ) {
+    Column(
+      modifier = Modifier.fillMaxWidth().padding(22.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      Box(
+        modifier =
+          Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+      }
+      Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+  }
 }
 
 private fun String.maskIfImported(isImportedSettings: Boolean): String =
@@ -956,7 +1636,11 @@ private fun String.toOccurredAtMillisOrNull(): Long? =
     }
     .getOrNull()
 
-private val DeepIncomeYellow = Color(0xFF9A6B00)
+private fun netYuanText(yuanText: String): String =
+  if (yuanText.startsWith("-")) "-¥${yuanText.drop(1)}" else "¥$yuanText"
+
+private val AppCardShape = RoundedCornerShape(8.dp)
+private val IncomeAccent = Color(0xFF0F766E)
 private val DateAxisFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd")
 
 private enum class QuickRange {
@@ -990,9 +1674,9 @@ private enum class QuickRange {
   }
 }
 
-private enum class MainTab(val title: String, val icon: String) {
-  Record("记账", "记"),
-  Bills("账单", "账"),
-  Dashboard("Dashboard", "图"),
-  Settings("设置", "设"),
+private enum class MainTab(val title: String, val icon: ImageVector) {
+  Record("记账", Icons.Default.AddCircle),
+  Bills("账单", Icons.AutoMirrored.Filled.ReceiptLong),
+  Dashboard("Dashboard", Icons.Default.QueryStats),
+  Settings("设置", Icons.Default.Settings),
 }
