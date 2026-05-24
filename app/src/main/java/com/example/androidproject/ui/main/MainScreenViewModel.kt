@@ -36,7 +36,6 @@ class MainScreenViewModel(
           totalText = filteredEntries.sumOf { it.signedAmountCents() }.asYuanText(),
           dashboardStats = buildDashboardStats(filteredEntries, form.filter),
           transcript = form.transcript,
-          incomeTranscript = form.incomeTranscript,
           statusMessage = form.statusMessage,
           isProcessing = form.isProcessing,
           filter = form.filter,
@@ -47,10 +46,6 @@ class MainScreenViewModel(
 
   fun updateTranscript(value: String) {
     formState.update { it.copy(transcript = value) }
-  }
-
-  fun updateIncomeTranscript(value: String) {
-    formState.update { it.copy(incomeTranscript = value) }
   }
 
   fun updateFilterStart(value: String) {
@@ -125,50 +120,25 @@ class MainScreenViewModel(
   fun submitTranscript() {
     val text = formState.value.transcript.trim()
     if (text.isBlank()) {
-      formState.update { it.copy(statusMessage = "请输入一笔消费") }
+      formState.update { it.copy(statusMessage = "请输入消费或收入") }
       return
     }
 
     viewModelScope.launch {
       formState.update { it.copy(isProcessing = true, statusMessage = "正在解析账单...") }
       val result =
-        runCatching { expenseAgent.parseExpense(text, formState.value.settings) }
+        runCatching { expenseAgent.parseEntry(text, formState.value.settings) }
           .getOrElse { error ->
             formState.update { it.copy(isProcessing = false, statusMessage = error.message ?: "解析失败") }
             return@launch
       }
-      ledgerRepository.saveEntry(result.entry)
+      result.entries.forEach { ledgerRepository.saveEntry(it) }
+      val details = result.entries.joinToString("；") { "${it.description} ${it.amountCents.asYuanText()} 元" }
       formState.update {
         it.copy(
           transcript = "",
           isProcessing = false,
-          statusMessage = "${result.message}：${result.entry.description}，${result.entry.amountCents.asYuanText()} 元",
-        )
-      }
-    }
-  }
-
-  fun submitIncomeTranscript() {
-    val text = formState.value.incomeTranscript.trim()
-    if (text.isBlank()) {
-      formState.update { it.copy(statusMessage = "请输入一笔收入") }
-      return
-    }
-
-    viewModelScope.launch {
-      formState.update { it.copy(isProcessing = true, statusMessage = "正在解析收入...") }
-      val result =
-        runCatching { expenseAgent.parseIncome(text, formState.value.settings) }
-          .getOrElse { error ->
-            formState.update { it.copy(isProcessing = false, statusMessage = error.message ?: "解析失败") }
-            return@launch
-          }
-      ledgerRepository.saveEntry(result.entry)
-      formState.update {
-        it.copy(
-          incomeTranscript = "",
-          isProcessing = false,
-          statusMessage = "${result.message}：${result.entry.description}，${result.entry.amountCents.asYuanText()} 元",
+          statusMessage = "${result.message}：$details",
         )
       }
     }
@@ -192,7 +162,6 @@ data class MainScreenUiState(
   val totalText: String = "0.00",
   val dashboardStats: DashboardStats = DashboardStats(),
   val transcript: String = "",
-  val incomeTranscript: String = "",
   val statusMessage: String = "请先配置 Agent，然后输入一笔消费或收入进行记账。",
   val isProcessing: Boolean = false,
   val filter: LedgerFilter = LedgerFilter(),
@@ -201,7 +170,6 @@ data class MainScreenUiState(
 
 private data class MainScreenFormState(
   val transcript: String = "",
-  val incomeTranscript: String = "",
   val statusMessage: String = "请先配置 Agent，然后输入一笔消费或收入进行记账。",
   val isProcessing: Boolean = false,
   val filter: LedgerFilter = LedgerFilter(),

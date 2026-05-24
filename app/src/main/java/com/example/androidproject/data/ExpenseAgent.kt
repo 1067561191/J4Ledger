@@ -16,7 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class ExpenseParseResult(
-  val entry: LedgerEntry,
+  val entries: List<LedgerEntry>,
   val message: String,
 )
 
@@ -24,6 +24,8 @@ interface ExpenseAgent {
   suspend fun parseExpense(rawText: String, settings: AgentSettings): ExpenseParseResult
 
   suspend fun parseIncome(rawText: String, settings: AgentSettings): ExpenseParseResult
+
+  suspend fun parseEntry(rawText: String, settings: AgentSettings): ExpenseParseResult
 }
 
 class OpenAiCompatibleExpenseAgent(
@@ -37,7 +39,7 @@ class OpenAiCompatibleExpenseAgent(
     val remoteResult =
       runCatching { requestRemoteAgent(trimmed, settings, LedgerEntryType.Expense) }
         .getOrElse { throw IllegalStateException("AI 服务暂时不可用，请检查配置、网络或服务状态后再试。") }
-    return ExpenseParseResult(remoteResult, "已由 Agent 解析并记消费")
+    return ExpenseParseResult(listOf(remoteResult), "已由 Agent 解析并记消费")
   }
 
   override suspend fun parseIncome(rawText: String, settings: AgentSettings): ExpenseParseResult {
@@ -48,7 +50,19 @@ class OpenAiCompatibleExpenseAgent(
     val remoteResult =
       runCatching { requestRemoteAgent(trimmed, settings, LedgerEntryType.Income) }
         .getOrElse { throw IllegalStateException("AI 服务暂时不可用，请检查配置、网络或服务状态后再试。") }
-    return ExpenseParseResult(remoteResult, "已由 Agent 解析并记收入")
+    return ExpenseParseResult(listOf(remoteResult), "已由 Agent 解析并记收入")
+  }
+
+  override suspend fun parseEntry(rawText: String, settings: AgentSettings): ExpenseParseResult {
+    val trimmed = rawText.trim()
+    require(trimmed.isNotBlank()) { "请输入消费或收入" }
+    require(settings.isConfigured()) { "请先在设置页填写 base_url、api_key 和 model_name，再进行记账。" }
+
+    val remoteResults =
+      runCatching { requestRemoteAgentAutoType(trimmed, settings) }
+        .getOrElse { throw IllegalStateException("AI 服务暂时不可用，请检查配置、网络或服务状态后再试。") }
+    val count = remoteResults.size
+    return ExpenseParseResult(remoteResults, "已记 $count 笔账")
   }
 
   private suspend fun requestRemoteAgent(rawText: String, settings: AgentSettings, type: LedgerEntryType): LedgerEntry =
@@ -78,6 +92,35 @@ class OpenAiCompatibleExpenseAgent(
         }
 
       parseAgentResponse(rawText, responseText, type)
+    }
+
+  private suspend fun requestRemoteAgentAutoType(rawText: String, settings: AgentSettings): List<LedgerEntry> =
+    withContext(Dispatchers.IO) {
+      val endpoint = settings.baseUrl.trimEnd('/').let { base ->
+        if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
+      }
+      val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20_000
+        readTimeout = 40_000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
+      }
+
+      OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+        writer.write(buildChatCompletionBodyAutoType(rawText, settings).toString())
+      }
+
+      val responseText =
+        if (connection.responseCode in 200..299) {
+          connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } else {
+          val errorText = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+          error("HTTP ${connection.responseCode}: $errorText")
+        }
+
+      parseAgentResponseAutoType(rawText, responseText)
     }
 
   private fun buildChatCompletionBody(rawText: String, settings: AgentSettings, type: LedgerEntryType): JSONObject {
@@ -150,6 +193,73 @@ class OpenAiCompatibleExpenseAgent(
       .put("tool_choice", "auto")
   }
 
+  private fun buildChatCompletionBodyAutoType(rawText: String, settings: AgentSettings): JSONObject {
+    val taskText =
+      """
+      你是 ${settings.appTitle.ifBlank { "J4Ledger" }} 的记账 Agent。你的任务是从中文描述中抽取收入或支出记录。
+      当前日期是 ${LocalDate.now(clock)}，当前时间是 ${LocalTime.now(clock).format(DateTimeFormatter.ofPattern("HH:mm"))}。
+      
+      用户可能一次描述多笔账单，你需要为每笔账单分别调用 record_entry 工具。
+      
+      判断每笔账单是收入还是支出：
+      - 收入关键词：工资、奖金、报销、理财收益、兼职收入、转账收款、红包收到、退款到账、分红、租金收入等
+      - 支出关键词：买、购买、支付、消费、花费、吃饭、打车、购物、充值、缴费等
+      
+      每笔账单调用一次 record_entry 工具：
+      - type 字段填 "income" 表示收入，"expense" 表示支出
+      - amount_yuan 必须是正数
+      - 如果是收入：channel 规范化为微信、支付宝、银行卡、现金或其他；category 用工资、奖金、报销、理财、兼职、转账、红包、其他之一
+      - 如果是支出：channel 规范化为微信、支付宝、现金、银行卡、信用卡或其他；category 用餐饮、交通、购物、娱乐、居家、医疗、教育、旅行、其他之一
+      - occurred_date 用 yyyy-MM-dd；occurred_time 用 HH:mm。没有明确日期或时间时使用当前日期和当前时间
+      """.trimIndent()
+
+    return JSONObject()
+      .put("model", settings.modelName)
+      .put("temperature", 0.1)
+      .put(
+        "messages",
+        JSONArray()
+          .put(
+            JSONObject()
+              .put("role", "system")
+              .put("content", taskText)
+          )
+          .put(JSONObject().put("role", "user").put("content", rawText)),
+      )
+      .put(
+        "tools",
+        JSONArray()
+          .put(
+            JSONObject()
+              .put("type", "function")
+              .put(
+                "function",
+                JSONObject()
+                  .put("name", "record_entry")
+                  .put("description", "Create one ledger entry (income or expense) from natural language.")
+                  .put(
+                    "parameters",
+                    JSONObject()
+                      .put("type", "object")
+                      .put(
+                        "properties",
+                        JSONObject()
+                          .put("type", JSONObject().put("type", "string").put("description", "income or expense").put("enum", JSONArray().put("income").put("expense")))
+                          .put("amount_yuan", JSONObject().put("type", "number").put("description", "金额，单位元"))
+                          .put("channel", JSONObject().put("type", "string"))
+                          .put("category", JSONObject().put("type", "string").put("description", "收入类型或消费分类"))
+                          .put("description", JSONObject().put("type", "string").put("description", "事项描述"))
+                          .put("occurred_date", JSONObject().put("type", "string").put("description", "yyyy-MM-dd"))
+                          .put("occurred_time", JSONObject().put("type", "string").put("description", "HH:mm"))
+                      )
+                      .put("required", JSONArray().put("type").put("amount_yuan").put("channel").put("category").put("description").put("occurred_date").put("occurred_time"))
+                  )
+              )
+          )
+      )
+      .put("tool_choice", "auto")
+  }
+
   private fun parseAgentResponse(rawText: String, responseText: String, type: LedgerEntryType): LedgerEntry {
     val root = JSONObject(responseText)
     val message = root.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
@@ -176,6 +286,58 @@ class OpenAiCompatibleExpenseAgent(
       occurredDate = parsed.optString("occurred_date", LocalDate.now(clock).format(DateTimeFormatter.ISO_LOCAL_DATE)),
       occurredTime = parsed.optString("occurred_time", LocalTime.now(clock).format(DateTimeFormatter.ofPattern("HH:mm"))),
     )
+  }
+
+  private fun parseAgentResponseAutoType(rawText: String, responseText: String): List<LedgerEntry> {
+    val root = JSONObject(responseText)
+    val message = root.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+    val entries = mutableListOf<LedgerEntry>()
+
+    if (message.has("tool_calls")) {
+      val toolCalls = message.getJSONArray("tool_calls")
+      for (i in 0 until toolCalls.length()) {
+        val argumentsText = toolCalls.getJSONObject(i).getJSONObject("function").getString("arguments")
+        val jsonText = argumentsText.substringAfter("```json", argumentsText).substringBefore("```").trim()
+        val parsed = JSONObject(jsonText)
+        val typeStr = parsed.optString("type", "expense")
+        val type = if (typeStr == "income") LedgerEntryType.Income else LedgerEntryType.Expense
+        entries.add(
+          buildEntry(
+            rawText = rawText,
+            type = type,
+            amountYuan = parsed.optDouble("amount_yuan", Double.NaN),
+            channel = parsed.optString("channel", "其他"),
+            category = parsed.optString("category", "其他"),
+            description = parsed.optString("description", rawText),
+            occurredDate = parsed.optString("occurred_date", LocalDate.now(clock).format(DateTimeFormatter.ISO_LOCAL_DATE)),
+            occurredTime = parsed.optString("occurred_time", LocalTime.now(clock).format(DateTimeFormatter.ofPattern("HH:mm"))),
+          )
+        )
+      }
+    } else {
+      val content = message.optString("content")
+      val jsonText = content.substringAfter("```json", content).substringBefore("```").trim()
+      if (jsonText.isNotBlank()) {
+        val parsed = JSONObject(jsonText)
+        val typeStr = parsed.optString("type", "expense")
+        val type = if (typeStr == "income") LedgerEntryType.Income else LedgerEntryType.Expense
+        entries.add(
+          buildEntry(
+            rawText = rawText,
+            type = type,
+            amountYuan = parsed.optDouble("amount_yuan", Double.NaN),
+            channel = parsed.optString("channel", "其他"),
+            category = parsed.optString("category", "其他"),
+            description = parsed.optString("description", rawText),
+            occurredDate = parsed.optString("occurred_date", LocalDate.now(clock).format(DateTimeFormatter.ISO_LOCAL_DATE)),
+            occurredTime = parsed.optString("occurred_time", LocalTime.now(clock).format(DateTimeFormatter.ofPattern("HH:mm"))),
+          )
+        )
+      }
+    }
+
+    require(entries.isNotEmpty()) { "未能解析出任何账单" }
+    return entries
   }
 
   private fun buildEntry(

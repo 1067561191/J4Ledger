@@ -13,8 +13,14 @@
 .externalNativeBuild
 .cxx
 local.properties
+__pycache__/
+*.pyc
+*.pyo
 *.local.md
 
 # Signing keystore
 *.jks
 *.keystore
+.env
+.env.*
+!.env.example

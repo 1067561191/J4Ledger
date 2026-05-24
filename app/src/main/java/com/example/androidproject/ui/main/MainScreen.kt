@@ -373,35 +373,20 @@ private fun RecordPane(
     contentPadding = PaddingValues(bottom = 20.dp),
   ) {
     item {
-      SectionHeader(title = "快速记账", subtitle = "自然语言输入，Agent 解析后写入本地账本")
+      SectionHeader(title = "快速记账", subtitle = "自然语言输入，Agent 自动判断消费或收入，支持多笔")
     }
     item {
       EntryComposerCard(
-        title = "记一笔消费",
-        subtitle = "用途、渠道、金额和日期写在一句话里即可",
+        title = "记一笔账",
+        subtitle = "消费或收入，一句话搞定，也可一次记多笔",
         value = state.transcript,
         onValueChange = viewModel::updateTranscript,
-        label = "消费内容",
-        placeholder = "例如：今天用微信支付 28 元买咖啡",
+        label = "账单内容",
+        placeholder = "例如：今天用微信支付 28 元买咖啡\n或：吃早饭5块，奶茶13块，工资到账3000",
         icon = Icons.Default.Payments,
         accentColor = MaterialTheme.colorScheme.primary,
-        buttonText = "记消费",
+        buttonText = "记账",
         onSubmit = viewModel::submitTranscript,
-        isProcessing = state.isProcessing,
-      )
-    }
-    item {
-      EntryComposerCard(
-        title = "记一笔收入",
-        subtitle = "工资、转账、退款等收入也可以直接记录",
-        value = state.incomeTranscript,
-        onValueChange = viewModel::updateIncomeTranscript,
-        label = "收入内容",
-        placeholder = "例如：今天银行卡到账 8000 元工资",
-        icon = Icons.Default.Savings,
-        accentColor = IncomeAccent,
-        buttonText = "记收入",
-        onSubmit = viewModel::submitIncomeTranscript,
         isProcessing = state.isProcessing,
       )
     }
