@@ -13,7 +13,7 @@ data class WechatBillRecord(
   val remark: String,
 ) {
   val uniqueKey: String
-    get() = "$transactionType-$counterpart-$product"
+    get() = "$transactionType|||$counterpart|||$product"
 }
 
 data class WechatBillPreviewState(

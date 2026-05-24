@@ -395,14 +395,15 @@ class OpenAiCompatibleExpenseAgent(
 
         可选分类：餐饮、交通、购物、娱乐、居家、医疗、教育、旅行、转账、红包、其他
 
-        请为每条记录返回分类结果，格式为JSON对象，key为"交易类型-交易对方-商品"，value为分类名称。
-        示例：{"商户消费-美团-猪脚饭": "餐饮", "微信红包-发给rainbow-红包": "红包"}
+        用户会给你一个编号列表，每个编号对应一条账单记录。
+        请为每条记录返回分类结果，格式为JSON对象，key为用户提供的编号（如0, 1, 2...），value为分类名称。
+        示例：{"0": "餐饮", "1": "红包", "2": "购物"}
         """.trimIndent()
 
-      val recordsText = uniqueKeys.joinToString("\n") { key ->
-        val parts = key.split("-")
-        "- 交易类型: ${parts.getOrElse(0) { "" }}, 交易对方: ${parts.getOrElse(1) { "" }}, 商品: ${parts.getOrElse(2) { "" }}"
-      }
+      val recordsText = uniqueKeys.mapIndexed { index, key ->
+        val parts = key.split("|||")
+        "$index. 交易类型: ${parts.getOrElse(0) { "" }}, 交易对方: ${parts.getOrElse(1) { "" }}, 商品: ${parts.getOrElse(2) { "" }}"
+      }.joinToString("\n")
 
       val requestBody = JSONObject()
         .put("model", settings.modelName)
@@ -426,7 +427,14 @@ class OpenAiCompatibleExpenseAgent(
           error("HTTP ${connection.responseCode}: $errorText")
         }
 
-      parseClassificationResponse(responseText)
+      val parsedResponse = parseClassificationResponse(responseText)
+      // 将数字索引转换回uniqueKey
+      val result = mutableMapOf<String, String>()
+      uniqueKeys.forEachIndexed { index, key ->
+        val category = parsedResponse[index.toString()] ?: "其他"
+        result[key] = category
+      }
+      result
     }
 
   private fun parseClassificationResponse(responseText: String): Map<String, String> {

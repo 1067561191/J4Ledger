@@ -1408,6 +1408,7 @@ private fun SettingsPane(
   var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
   var pendingImportBytes by remember { mutableStateOf<ByteArray?>(null) }
   var showImportConfirm by remember { mutableStateOf(false) }
+  var showConfigMissingDialog by remember { mutableStateOf(false) }
   val wechatBillPreview by viewModel.wechatBillPreview.collectAsStateWithLifecycle()
 
   val createDocumentLauncher =
@@ -1610,14 +1611,21 @@ private fun SettingsPane(
     item {
       SettingsSectionCard(title = "导入微信账单", icon = Icons.Default.UploadFile) {
         Text(
-          "从微信导出的账单 Excel 文件（.xlsx）中导入消费和收入记录。",
+          "从微信导出的账单 Excel 文件（.xlsx）中导入消费和收入记录。AI 将自动判断每笔账单的分类。",
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PressableButton(
           text = "选择微信账单文件",
           icon = Icons.Default.UploadFile,
-          onClick = { wechatBillLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+          onClick = {
+            val settings = state.settings
+            if (settings.baseUrl.isBlank() || settings.apiKey.isBlank() || settings.modelName.isBlank()) {
+              showConfigMissingDialog = true
+            } else {
+              wechatBillLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            }
+          },
           enabled = true,
           containerColor = MaterialTheme.colorScheme.primary,
           modifier = Modifier.fillMaxWidth(),
@@ -1667,6 +1675,19 @@ private fun SettingsPane(
           }
         ) {
           Text("取消")
+        }
+      },
+    )
+  }
+
+  if (showConfigMissingDialog) {
+    AlertDialog(
+      onDismissRequest = { showConfigMissingDialog = false },
+      title = { Text("Agent 配置缺失") },
+      text = { Text("导入微信账单需要 AI 分类功能，请先在上方「Agent 配置」中填写 base_url、api_key 和 model_name。") },
+      confirmButton = {
+        Button(onClick = { showConfigMissingDialog = false }) {
+          Text("我知道了")
         }
       },
     )
