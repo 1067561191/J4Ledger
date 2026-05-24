@@ -31,6 +31,8 @@ interface LedgerRepository {
 
   fun deleteEntry(id: String)
 
+  fun deleteEntries(ids: List<String>)
+
   fun saveSettings(settings: AgentSettings)
 
   fun exportBackup(options: BackupOptions): ByteArray
@@ -56,6 +58,19 @@ class SQLiteLedgerRepository(context: Context) : LedgerRepository {
 
   override fun deleteEntry(id: String) {
     dbHelper.writableDatabase.delete(TABLE_ENTRIES, "id = ?", arrayOf(id))
+    refresh()
+  }
+
+  override fun deleteEntries(ids: List<String>) {
+    if (ids.isEmpty()) return
+    val db = dbHelper.writableDatabase
+    db.beginTransaction()
+    try {
+      ids.forEach { id -> db.delete(TABLE_ENTRIES, "id = ?", arrayOf(id)) }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
     refresh()
   }
 

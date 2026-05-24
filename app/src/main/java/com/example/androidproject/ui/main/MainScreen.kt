@@ -1,5 +1,6 @@
 package com.example.androidproject.ui.main
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -15,7 +16,9 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -56,6 +59,8 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Payments
@@ -77,6 +82,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -548,28 +554,119 @@ private fun BillsPane(
   modifier: Modifier = Modifier,
 ) {
   var editingEntry by remember { mutableStateOf<LedgerEntry?>(null) }
+  var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+  var showDeleteConfirm by remember { mutableStateOf(false) }
+  val isMultiSelectMode = selectedIds.isNotEmpty()
+  val entries = state.entries
 
-  LazyColumn(
-    modifier = modifier.fillMaxSize(),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
-    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-  ) {
-    item { BillsSummaryCard(state = state) }
-    item { DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "账单日期") }
-    item { SectionHeader(title = "账单明细", subtitle = "${state.entries.size} 条记录，长按可编辑") }
-    if (state.entries.isEmpty()) {
+  BackHandler(enabled = isMultiSelectMode) { selectedIds = emptySet() }
+
+  Box(modifier = modifier.fillMaxSize()) {
+    LazyColumn(
+      modifier = Modifier.fillMaxSize(),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+      contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+    ) {
+      item { BillsSummaryCard(state = state) }
+      item { DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "账单日期") }
       item {
-        EmptyStateCard(
-          icon = Icons.AutoMirrored.Filled.ReceiptLong,
-          title = "这个日期范围内还没有账单",
-          body = "记录一笔消费或收入后，这里会按时间展示明细。",
+        BillsSectionHeader(
+          entryCount = entries.size,
+          isMultiSelectMode = isMultiSelectMode,
+          selectedCount = selectedIds.size,
+          allSelected = selectedIds.size == entries.size && entries.isNotEmpty(),
+          onSelectAll = { selectedIds = entries.map { it.id }.toSet() },
+          onDeselectAll = { selectedIds = emptySet() },
+          onExitMultiSelect = { selectedIds = emptySet() },
         )
       }
-    } else {
-      items(state.entries, key = { it.id }) { entry ->
-        LedgerEntryCard(entry = entry, onLongPress = { editingEntry = it })
+      if (entries.isEmpty()) {
+        item {
+          EmptyStateCard(
+            icon = Icons.AutoMirrored.Filled.ReceiptLong,
+            title = "这个日期范围内还没有账单",
+            body = "记录一笔消费或收入后，这里会按时间展示明细。",
+          )
+        }
+      } else {
+        items(entries, key = { it.id }) { entry ->
+          LedgerEntryCard(
+            entry = entry,
+            isSelected = entry.id in selectedIds,
+            isMultiSelectMode = isMultiSelectMode,
+            onClick = {
+              if (isMultiSelectMode) {
+                selectedIds = if (entry.id in selectedIds) selectedIds - entry.id else selectedIds + entry.id
+              } else {
+                editingEntry = entry
+              }
+            },
+            onLongClick = {
+              if (!isMultiSelectMode) {
+                selectedIds = setOf(entry.id)
+              }
+            },
+          )
+        }
       }
     }
+
+    AnimatedVisibility(
+      visible = isMultiSelectMode,
+      enter = slideInVertically(initialOffsetY = { it }),
+      exit = slideOutVertically(targetOffsetY = { it }),
+      modifier = Modifier.align(Alignment.BottomCenter),
+    ) {
+      Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          OutlinedButton(onClick = { selectedIds = emptySet() }) {
+            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("退出")
+          }
+          Text(
+            "已选 ${selectedIds.size} 条",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+          )
+          Button(
+            onClick = { showDeleteConfirm = true },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+          ) {
+            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("删除")
+          }
+        }
+      }
+    }
+  }
+
+  if (showDeleteConfirm && selectedIds.isNotEmpty()) {
+    AlertDialog(
+      onDismissRequest = { showDeleteConfirm = false },
+      title = { Text("确认删除") },
+      text = { Text("确定删除选中的 ${selectedIds.size} 条账单？") },
+      confirmButton = {
+        Button(
+          onClick = {
+            viewModel.deleteEntries(selectedIds.toList())
+            selectedIds = emptySet()
+            showDeleteConfirm = false
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+        ) { Text("删除") }
+      },
+      dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } },
+    )
   }
 
   editingEntry?.let { entry ->
@@ -585,6 +682,59 @@ private fun BillsPane(
         editingEntry = null
       },
     )
+  }
+}
+
+@Composable
+private fun BillsSectionHeader(
+  entryCount: Int,
+  isMultiSelectMode: Boolean,
+  selectedCount: Int,
+  allSelected: Boolean,
+  onSelectAll: () -> Unit,
+  onDeselectAll: () -> Unit,
+  onExitMultiSelect: () -> Unit,
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        if (isMultiSelectMode) "已选 $selectedCount / $entryCount" else "账单明细",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+      )
+      if (!isMultiSelectMode) {
+        Text(
+          "${entryCount} 条记录，单击编辑，长按多选",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+    }
+    if (isMultiSelectMode) {
+      Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier =
+            Modifier
+              .clip(AppCardShape)
+              .clickable { if (allSelected) onDeselectAll() else onSelectAll() }
+              .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+          Checkbox(
+            checked = allSelected,
+            onCheckedChange = { if (allSelected) onDeselectAll() else onSelectAll() },
+          )
+          Text("全选", style = MaterialTheme.typography.bodyMedium)
+        }
+        IconButton(onClick = onExitMultiSelect) {
+          Icon(Icons.Default.Close, contentDescription = "退出多选")
+        }
+      }
+    }
   }
 }
 
@@ -637,7 +787,13 @@ private fun BillsSummaryCard(state: MainScreenUiState) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LedgerEntryCard(entry: LedgerEntry, onLongPress: (LedgerEntry) -> Unit) {
+private fun LedgerEntryCard(
+  entry: LedgerEntry,
+  isSelected: Boolean,
+  isMultiSelectMode: Boolean,
+  onClick: () -> Unit,
+  onLongClick: () -> Unit,
+) {
   val isIncome = entry.type == LedgerEntryType.Income
   val amountPrefix = if (isIncome) "+¥" else "-¥"
   val amountColor = if (isIncome) IncomeAccent else MaterialTheme.colorScheme.error
@@ -658,11 +814,16 @@ private fun LedgerEntryCard(entry: LedgerEntry, onLongPress: (LedgerEntry) -> Un
         .combinedClickable(
           interactionSource = interactionSource,
           indication = null,
-          onClick = {},
-          onLongClick = { onLongPress(entry) },
+          onClick = onClick,
+          onLongClick = onLongClick,
         ),
     shape = AppCardShape,
-    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    colors = CardDefaults.elevatedCardColors(
+      containerColor = if (isSelected)
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+      else
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+    ),
     elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
   ) {
     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -671,6 +832,12 @@ private fun LedgerEntryCard(entry: LedgerEntry, onLongPress: (LedgerEntry) -> Un
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {
+        AnimatedVisibility(visible = isMultiSelectMode) {
+          Checkbox(
+            checked = isSelected,
+            onCheckedChange = null,
+          )
+        }
         Box(
           modifier = Modifier.size(42.dp).clip(CircleShape).background(amountColor.copy(alpha = 0.1f)),
           contentAlignment = Alignment.Center,

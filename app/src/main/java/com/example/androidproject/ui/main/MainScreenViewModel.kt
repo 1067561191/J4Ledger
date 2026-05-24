@@ -132,6 +132,11 @@ class MainScreenViewModel(
     formState.update { it.copy(statusMessage = "账单已删除") }
   }
 
+  fun deleteEntries(ids: List<String>) {
+    ledgerRepository.deleteEntries(ids)
+    formState.update { it.copy(statusMessage = "已删除 ${ids.size} 条账单") }
+  }
+
   fun exportBackup(options: BackupOptions): ByteArray =
     ledgerRepository.exportBackup(options)
 
