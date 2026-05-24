@@ -13,7 +13,7 @@ object WechatBillParser {
   private const val DATA_START_ROW_INDEX = 18
   private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
 
-  fun parse(inputStream: InputStream): List<WechatBillRecord> {
+  fun parse(inputStream: InputStream): List<BillRecord> {
     val workbook = XSSFWorkbook(inputStream)
     val sheet = workbook.getSheetAt(0)
 
@@ -23,7 +23,7 @@ object WechatBillParser {
       headerRow.getCell(idx)?.toString()?.trim() ?: ""
     }
 
-    val records = mutableListOf<WechatBillRecord>()
+    val records = mutableListOf<BillRecord>()
     var rowIdx = DATA_START_ROW_INDEX
     while (true) {
       val row = sheet.getRow(rowIdx) ?: break
@@ -40,7 +40,7 @@ object WechatBillParser {
         .toDoubleOrNull() ?: 0.0
 
       records.add(
-        WechatBillRecord(
+        BillRecord(
           transactionTime = cells.getOrElse(0) { "" },
           transactionType = cells.getOrElse(1) { "" },
           counterpart = cells.getOrElse(2) { "" },

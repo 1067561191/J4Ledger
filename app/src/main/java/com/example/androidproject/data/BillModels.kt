@@ -1,6 +1,6 @@
 package com.example.androidproject.data
 
-data class WechatBillRecord(
+data class BillRecord(
   val transactionTime: String,
   val transactionType: String,
   val counterpart: String,
@@ -16,8 +16,8 @@ data class WechatBillRecord(
     get() = "$transactionType|||$counterpart|||$product"
 }
 
-data class WechatBillPreviewState(
-  val records: List<WechatBillRecord> = emptyList(),
+data class BillPreviewState(
+  val records: List<BillRecord> = emptyList(),
   val statusOptions: List<String> = emptyList(),
   val selectedStatuses: Set<String> = emptySet(),
   val categoryMap: Map<String, String> = emptyMap(),
@@ -25,6 +25,6 @@ data class WechatBillPreviewState(
   val importProgress: Float = 0f,
   val isImporting: Boolean = false,
 ) {
-  val filteredRecords: List<WechatBillRecord>
+  val filteredRecords: List<BillRecord>
     get() = records.filter { it.status in selectedStatuses }
 }

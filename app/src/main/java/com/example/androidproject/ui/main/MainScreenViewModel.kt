@@ -3,16 +3,17 @@ package com.example.androidproject.ui.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.androidproject.data.AgentSettings
+import com.example.androidproject.data.AlipayBillParser
 import com.example.androidproject.data.AppThemeMode
 import com.example.androidproject.data.BackupOptions
+import com.example.androidproject.data.BillPreviewState
+import com.example.androidproject.data.BillRecord
 import com.example.androidproject.data.ExpenseAgent
 import com.example.androidproject.data.LedgerEntry
 import com.example.androidproject.data.LedgerEntryType
 import com.example.androidproject.data.LedgerFilter
 import com.example.androidproject.data.LedgerRepository
 import com.example.androidproject.data.WechatBillParser
-import com.example.androidproject.data.WechatBillPreviewState
-import com.example.androidproject.data.WechatBillRecord
 import com.example.androidproject.data.asYuanText
 import com.example.androidproject.data.localDate
 import com.example.androidproject.data.signedAmountCents
@@ -40,8 +41,8 @@ class MainScreenViewModel(
     drawerExpanded = ledgerRepository.snapshot.value.settings.drawerExpanded
   ))
 
-  private val _wechatBillPreview = MutableStateFlow<WechatBillPreviewState?>(null)
-  val wechatBillPreview: StateFlow<WechatBillPreviewState?> = _wechatBillPreview
+  private val _billPreview = MutableStateFlow<BillPreviewState?>(null)
+  val billPreview: StateFlow<BillPreviewState?> = _billPreview
 
   val uiState: StateFlow<MainScreenUiState> =
     combine(ledgerRepository.snapshot, formState) { snapshot, form ->
@@ -174,29 +175,52 @@ class MainScreenViewModel(
 
   fun parseWechatBillExcel(inputStream: InputStream) {
     viewModelScope.launch {
-      _wechatBillPreview.update { WechatBillPreviewState(isClassifying = true) }
+      _billPreview.update { BillPreviewState(isClassifying = true) }
       runCatching {
         val records = WechatBillParser.parse(inputStream)
         val statusOptions = records.map { it.status }.distinct()
-        _wechatBillPreview.update {
-          WechatBillPreviewState(
+        _billPreview.update {
+          BillPreviewState(
             records = records,
             statusOptions = statusOptions,
             selectedStatuses = statusOptions.toSet(),
             isClassifying = true,
           )
         }
-        val categoryMap = expenseAgent.classifyWechatBillCategories(records, formState.value.settings)
-        _wechatBillPreview.update { it?.copy(categoryMap = categoryMap, isClassifying = false) }
+        val categoryMap = expenseAgent.classifyBillCategories(records, formState.value.settings)
+        _billPreview.update { it?.copy(categoryMap = categoryMap, isClassifying = false) }
       }.onFailure { error ->
-        _wechatBillPreview.update { null }
+        _billPreview.update { null }
         formState.update { it.copy(statusMessage = "解析微信账单失败：${error.message}") }
       }
     }
   }
 
-  fun toggleWechatBillStatusFilter(status: String) {
-    _wechatBillPreview.update { state ->
+  fun parseAlipayBillCsv(inputStream: InputStream) {
+    viewModelScope.launch {
+      _billPreview.update { BillPreviewState(isClassifying = true) }
+      runCatching {
+        val records = AlipayBillParser.parse(inputStream)
+        val statusOptions = records.map { it.status }.distinct()
+        _billPreview.update {
+          BillPreviewState(
+            records = records,
+            statusOptions = statusOptions,
+            selectedStatuses = statusOptions.toSet(),
+            isClassifying = true,
+          )
+        }
+        val categoryMap = expenseAgent.classifyBillCategories(records, formState.value.settings)
+        _billPreview.update { it?.copy(categoryMap = categoryMap, isClassifying = false) }
+      }.onFailure { error ->
+        _billPreview.update { null }
+        formState.update { it.copy(statusMessage = "解析支付宝账单失败：${error.message}") }
+      }
+    }
+  }
+
+  fun toggleBillStatusFilter(status: String) {
+    _billPreview.update { state ->
       state?.copy(
         selectedStatuses = if (status in state.selectedStatuses) {
           state.selectedStatuses - status
@@ -207,8 +231,8 @@ class MainScreenViewModel(
     }
   }
 
-  fun importSelectedWechatBillRecords() {
-    val preview = _wechatBillPreview.value ?: return
+  fun importSelectedBillRecords() {
+    val preview = _billPreview.value ?: return
     val records = preview.filteredRecords
     if (records.isEmpty()) {
       formState.update { it.copy(statusMessage = "没有可导入的记录") }
@@ -216,13 +240,13 @@ class MainScreenViewModel(
     }
 
     viewModelScope.launch {
-      _wechatBillPreview.update { it?.copy(isImporting = true, importProgress = 0f) }
+      _billPreview.update { it?.copy(isImporting = true, importProgress = 0f) }
       val total = records.size
       records.forEachIndexed { index, record ->
         val category = preview.categoryMap[record.uniqueKey] ?: "其他"
         val type = if (record.direction == "收入") LedgerEntryType.Income else LedgerEntryType.Expense
         val description = if (record.product.isNotBlank() && record.product != "/") record.product else record.transactionType
-        val occurredAt = parseWechatDateTime(record.transactionTime)
+        val occurredAt = parseBillDateTime(record.transactionTime)
 
         val entry = LedgerEntry(
           id = UUID.randomUUID().toString(),
@@ -236,18 +260,18 @@ class MainScreenViewModel(
           createdAtMillis = System.currentTimeMillis(),
         )
         ledgerRepository.saveEntry(entry)
-        _wechatBillPreview.update { it?.copy(importProgress = (index + 1f) / total) }
+        _billPreview.update { it?.copy(importProgress = (index + 1f) / total) }
       }
-      _wechatBillPreview.update { null }
-      formState.update { it.copy(statusMessage = "已成功导入 ${records.size} 条微信账单") }
+      _billPreview.update { null }
+      formState.update { it.copy(statusMessage = "已成功导入 ${records.size} 条账单") }
     }
   }
 
-  fun dismissWechatBillPreview() {
-    _wechatBillPreview.update { null }
+  fun dismissBillPreview() {
+    _billPreview.update { null }
   }
 
-  private fun parseWechatDateTime(dateTimeStr: String): Long {
+  private fun parseBillDateTime(dateTimeStr: String): Long {
     return try {
       val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
       val localDateTime = LocalDateTime.parse(dateTimeStr.trim(), formatter)

@@ -27,7 +27,7 @@ interface ExpenseAgent {
 
   suspend fun parseEntry(rawText: String, settings: AgentSettings): ExpenseParseResult
 
-  suspend fun classifyWechatBillCategories(records: List<WechatBillRecord>, settings: AgentSettings): Map<String, String>
+  suspend fun classifyBillCategories(records: List<BillRecord>, settings: AgentSettings): Map<String, String>
 }
 
 class OpenAiCompatibleExpenseAgent(
@@ -371,7 +371,7 @@ class OpenAiCompatibleExpenseAgent(
     )
   }
 
-  override suspend fun classifyWechatBillCategories(records: List<WechatBillRecord>, settings: AgentSettings): Map<String, String> =
+  override suspend fun classifyBillCategories(records: List<BillRecord>, settings: AgentSettings): Map<String, String> =
     withContext(Dispatchers.IO) {
       val uniqueKeys = records.map { it.uniqueKey }.distinct()
       if (uniqueKeys.isEmpty()) return@withContext emptyMap()
@@ -391,13 +391,13 @@ class OpenAiCompatibleExpenseAgent(
 
       val taskText =
         """
-        你是记账分类助手。根据微信账单记录的交易类型、交易对方和商品信息，判断每条记录的消费分类。
+        你是记账分类助手。根据账单记录的交易类型、交易对方和商品信息，判断每条记录的消费分类。
 
-        可选分类：餐饮、交通、购物、娱乐、居家、医疗、教育、旅行、转账、红包、其他
+        可选分类：餐饮美食、服饰装扮、日用百货、家居家装、数码电器、运动户外、美容美发、母婴亲子、宠物、交通出行、爱车养车、住房物业、酒店旅游、文化休闲、教育培训、医疗健康、生活服务、公共服务、商业服务、公益捐赠、互助保障、投资理财、保险、信用借还、充值缴费、转账红包、亲友代付、账户存取、退款、其他
 
         用户会给你一个编号列表，每个编号对应一条账单记录。
         请为每条记录返回分类结果，格式为JSON对象，key为用户提供的编号（如0, 1, 2...），value为分类名称。
-        示例：{"0": "餐饮", "1": "红包", "2": "购物"}
+        示例：{"0": "餐饮美食", "1": "转账红包", "2": "日用百货"}
         """.trimIndent()
 
       val recordsText = uniqueKeys.mapIndexed { index, key ->

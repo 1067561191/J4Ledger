@@ -118,13 +118,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.androidproject.data.AppThemeMode
 import com.example.androidproject.data.BackupOptions
+import com.example.androidproject.data.BillPreviewState
+import com.example.androidproject.data.BillRecord
 import com.example.androidproject.data.LedgerFilter
 import com.example.androidproject.data.LedgerEntry
 import com.example.androidproject.data.LedgerEntryType
 import com.example.androidproject.data.OpenAiCompatibleExpenseAgent
 import com.example.androidproject.data.SQLiteLedgerRepository
-import com.example.androidproject.data.WechatBillPreviewState
-import com.example.androidproject.data.WechatBillRecord
 import com.example.androidproject.data.asYuanText
 import com.example.androidproject.data.localDateTimeText
 import com.example.androidproject.data.toCents
@@ -1409,7 +1409,7 @@ private fun SettingsPane(
   var pendingImportBytes by remember { mutableStateOf<ByteArray?>(null) }
   var showImportConfirm by remember { mutableStateOf(false) }
   var showConfigMissingDialog by remember { mutableStateOf(false) }
-  val wechatBillPreview by viewModel.wechatBillPreview.collectAsStateWithLifecycle()
+  val billPreview by viewModel.billPreview.collectAsStateWithLifecycle()
 
   val createDocumentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -1446,6 +1446,16 @@ private fun SettingsPane(
               ?: error("无法读取微信账单文件")
           }
           .onFailure { viewModel.setStatusMessage(it.message ?: "微信账单读取失败") }
+      }
+    }
+  val alipayBillLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      if (uri != null) {
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { viewModel.parseAlipayBillCsv(it) }
+              ?: error("无法读取支付宝账单文件")
+          }
+          .onFailure { viewModel.setStatusMessage(it.message ?: "支付宝账单读取失败") }
       }
     }
 
@@ -1609,18 +1619,18 @@ private fun SettingsPane(
       }
     }
     item {
-      SettingsSectionCard(title = "导入微信账单", icon = Icons.Default.UploadFile) {
+      SettingsSectionCard(title = "导入账单", icon = Icons.Default.UploadFile) {
         Text(
-          "从微信导出的账单 Excel 文件（.xlsx）中导入消费和收入记录。AI 将自动判断每笔账单的分类。",
+          "从微信或支付宝导出的账单文件中导入消费和收入记录。AI 将自动判断每笔账单的分类。",
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val isAgentConfigured = state.settings.baseUrl.isNotBlank() && state.settings.apiKey.isNotBlank() && state.settings.modelName.isNotBlank()
         PressableButton(
-          text = "选择微信账单文件",
+          text = "选择微信账单文件 (.xlsx)",
           icon = Icons.Default.UploadFile,
           onClick = {
-            val settings = state.settings
-            if (settings.baseUrl.isBlank() || settings.apiKey.isBlank() || settings.modelName.isBlank()) {
+            if (!isAgentConfigured) {
               showConfigMissingDialog = true
             } else {
               wechatBillLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
@@ -1630,17 +1640,31 @@ private fun SettingsPane(
           containerColor = MaterialTheme.colorScheme.primary,
           modifier = Modifier.fillMaxWidth(),
         )
+        PressableButton(
+          text = "选择支付宝账单文件 (.csv)",
+          icon = Icons.Default.UploadFile,
+          onClick = {
+            if (!isAgentConfigured) {
+              showConfigMissingDialog = true
+            } else {
+              alipayBillLauncher.launch(arrayOf("text/comma-separated-values", "text/csv", "application/csv", "*/*"))
+            }
+          },
+          enabled = true,
+          containerColor = MaterialTheme.colorScheme.secondary,
+          modifier = Modifier.fillMaxWidth(),
+        )
       }
     }
   }
 
-  val preview = wechatBillPreview
+  val preview = billPreview
   if (preview != null) {
-    WechatBillPreviewDialog(
+    BillPreviewDialog(
       preview = preview,
-      onToggleStatus = viewModel::toggleWechatBillStatusFilter,
-      onImport = viewModel::importSelectedWechatBillRecords,
-      onDismiss = viewModel::dismissWechatBillPreview,
+      onToggleStatus = viewModel::toggleBillStatusFilter,
+      onImport = viewModel::importSelectedBillRecords,
+      onDismiss = viewModel::dismissBillPreview,
     )
   }
 
@@ -1684,7 +1708,7 @@ private fun SettingsPane(
     AlertDialog(
       onDismissRequest = { showConfigMissingDialog = false },
       title = { Text("Agent 配置缺失") },
-      text = { Text("导入微信账单需要 AI 分类功能，请先在上方「Agent 配置」中填写 base_url、api_key 和 model_name。") },
+      text = { Text("导入账单需要 AI 推理功能，请先在上方「Agent 配置」中填写 base_url、api_key 和 model_name。") },
       confirmButton = {
         Button(onClick = { showConfigMissingDialog = false }) {
           Text("我知道了")
@@ -1696,15 +1720,15 @@ private fun SettingsPane(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun WechatBillPreviewDialog(
-  preview: WechatBillPreviewState,
+private fun BillPreviewDialog(
+  preview: BillPreviewState,
   onToggleStatus: (String) -> Unit,
   onImport: () -> Unit,
   onDismiss: () -> Unit,
 ) {
   AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text("导入微信账单") },
+    title = { Text("导入账单") },
     text = {
       Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (preview.isClassifying) {
@@ -1714,7 +1738,7 @@ private fun WechatBillPreviewDialog(
             modifier = Modifier.fillMaxWidth(),
           ) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            Text("正在通过 AI 分类账单...")
+            Text("正在通过 AI 处理账单...")
           }
         } else {
           Text(
