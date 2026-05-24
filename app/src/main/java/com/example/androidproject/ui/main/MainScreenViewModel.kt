@@ -25,7 +25,10 @@ class MainScreenViewModel(
   private val ledgerRepository: LedgerRepository,
   private val expenseAgent: ExpenseAgent,
 ) : ViewModel() {
-  private val formState = MutableStateFlow(MainScreenFormState(settings = ledgerRepository.snapshot.value.settings))
+  private val formState = MutableStateFlow(MainScreenFormState(
+    settings = ledgerRepository.snapshot.value.settings,
+    drawerExpanded = ledgerRepository.snapshot.value.settings.drawerExpanded
+  ))
 
   val uiState: StateFlow<MainScreenUiState> =
     combine(ledgerRepository.snapshot, formState) { snapshot, form ->
@@ -40,6 +43,7 @@ class MainScreenViewModel(
           isProcessing = form.isProcessing,
           filter = form.filter,
           settings = form.settings,
+          drawerExpanded = form.drawerExpanded,
         )
       }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MainScreenUiState())
@@ -78,6 +82,12 @@ class MainScreenViewModel(
 
   fun updateThemeMode(value: AppThemeMode) {
     formState.update { it.copy(settings = it.settings.copy(themeMode = value)) }
+  }
+
+  fun toggleDrawer() {
+    val newValue = !formState.value.drawerExpanded
+    formState.update { it.copy(drawerExpanded = newValue) }
+    ledgerRepository.saveSettings(formState.value.settings.copy(drawerExpanded = newValue))
   }
 
   fun saveSettings() {
@@ -166,6 +176,7 @@ data class MainScreenUiState(
   val isProcessing: Boolean = false,
   val filter: LedgerFilter = LedgerFilter(),
   val settings: AgentSettings = AgentSettings(),
+  val drawerExpanded: Boolean = true,
 )
 
 private data class MainScreenFormState(
@@ -174,4 +185,5 @@ private data class MainScreenFormState(
   val isProcessing: Boolean = false,
   val filter: LedgerFilter = LedgerFilter(),
   val settings: AgentSettings = AgentSettings(),
+  val drawerExpanded: Boolean = true,
 )

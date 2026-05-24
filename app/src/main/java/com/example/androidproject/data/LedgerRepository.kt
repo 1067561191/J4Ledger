@@ -182,6 +182,7 @@ class SQLiteLedgerRepository(context: Context) : LedgerRepository {
             modelName = cursor.getStringValue("model_name"),
             themeMode = AppThemeMode.fromStorageValue(cursor.getStringValue("theme_mode")),
             isImportedFromBackup = cursor.getIntValue("imported_from_backup") == 1,
+            drawerExpanded = cursor.getIntValue("drawer_expanded") == 1,
           )
         }
       }
@@ -244,6 +245,7 @@ class SQLiteLedgerRepository(context: Context) : LedgerRepository {
       put("model_name", modelName.trim())
       put("theme_mode", themeMode.storageValue)
       put("imported_from_backup", if (isImportedFromBackup) 1 else 0)
+      put("drawer_expanded", if (drawerExpanded) 1 else 0)
     }
 }
 
@@ -302,6 +304,7 @@ private fun AgentSettings.toJson(): JSONObject =
     .put("modelName", modelName)
     .put("themeMode", themeMode.storageValue)
     .put("isImportedFromBackup", isImportedFromBackup)
+    .put("drawerExpanded", drawerExpanded)
 
 private fun JSONObject.toAgentSettings(): AgentSettings =
   AgentSettings(
@@ -311,6 +314,7 @@ private fun JSONObject.toAgentSettings(): AgentSettings =
     modelName = optString("modelName", ""),
     themeMode = AppThemeMode.fromStorageValue(optString("themeMode", AppThemeMode.System.storageValue)),
     isImportedFromBackup = optBoolean("isImportedFromBackup", false),
+    drawerExpanded = optBoolean("drawerExpanded", true),
   )
 
 private class LedgerDbHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
@@ -324,7 +328,8 @@ private class LedgerDbHelper(context: Context) : SQLiteOpenHelper(context, DB_NA
         api_key TEXT NOT NULL,
         model_name TEXT NOT NULL,
         theme_mode TEXT NOT NULL DEFAULT 'SYSTEM',
-        imported_from_backup INTEGER NOT NULL DEFAULT 0
+        imported_from_backup INTEGER NOT NULL DEFAULT 0,
+        drawer_expanded INTEGER NOT NULL DEFAULT 1
       )
       """.trimIndent()
     )
@@ -349,6 +354,9 @@ private class LedgerDbHelper(context: Context) : SQLiteOpenHelper(context, DB_NA
 
   override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
     // The app is pre-release; old prototype storage formats are intentionally not migrated.
+    if (oldVersion < 4) {
+      db.execSQL("ALTER TABLE $TABLE_SETTINGS ADD COLUMN drawer_expanded INTEGER NOT NULL DEFAULT 1")
+    }
   }
 }
 
@@ -370,10 +378,11 @@ private fun AgentSettings.toValuesForCreate(): ContentValues =
     put("model_name", modelName)
     put("theme_mode", themeMode.storageValue)
     put("imported_from_backup", if (isImportedFromBackup) 1 else 0)
+    put("drawer_expanded", if (drawerExpanded) 1 else 0)
   }
 
 private const val DB_NAME = "j4ledger.db"
-private const val DB_VERSION = 3
+private const val DB_VERSION = 4
 private const val BACKUP_SCHEMA = 2
 private const val TABLE_SETTINGS = "settings"
 private const val TABLE_ENTRIES = "entries"

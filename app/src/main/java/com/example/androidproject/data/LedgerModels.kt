@@ -36,6 +36,7 @@ data class AgentSettings(
   val modelName: String = "",
   val themeMode: AppThemeMode = AppThemeMode.System,
   val isImportedFromBackup: Boolean = false,
+  val drawerExpanded: Boolean = true,
 )
 
 enum class AppThemeMode(val storageValue: String, val label: String) {

@@ -3,19 +3,23 @@ package com.example.androidproject.ui.main
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,10 +31,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -170,8 +176,9 @@ private fun MainScreenContent(
     containerColor = Color.Transparent,
     bottomBar = {
       NavigationBar(
-        containerColor = colorScheme.surface.copy(alpha = 0.96f),
-        tonalElevation = 8.dp,
+        containerColor = colorScheme.surface,
+        tonalElevation = 0.dp,
+        windowInsets = WindowInsets(0, 0, 0, 0),
       ) {
         MainTab.entries.forEach { tab ->
           NavigationBarItem(
@@ -200,46 +207,36 @@ private fun MainScreenContent(
           )
           .padding(innerPadding),
     ) {
-      Column(
-        modifier =
-          Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .padding(top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-      ) {
-        Header(state = state)
-        ProvideVicoTheme(theme = rememberM3VicoTheme()) {
-          AnimatedContent(
-            targetState = selectedTab,
-            label = "main-tab-transition",
-            transitionSpec = {
-              val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-              (
-                slideInHorizontally(animationSpec = tween(300, easing = FastOutSlowInEasing)) { width ->
-                  direction * width / 5
+      ProvideVicoTheme(theme = rememberM3VicoTheme()) {
+        AnimatedContent(
+          targetState = selectedTab,
+          label = "main-tab-transition",
+          transitionSpec = {
+            val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            (
+              slideInHorizontally(animationSpec = tween(300, easing = FastOutSlowInEasing)) { width ->
+                direction * width / 5
+              } +
+                fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                scaleIn(initialScale = 0.98f, animationSpec = tween(300, easing = FastOutSlowInEasing))
+              )
+              .togetherWith(
+                slideOutHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { width ->
+                  -direction * width / 6
                 } +
-                  fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                  scaleIn(initialScale = 0.98f, animationSpec = tween(300, easing = FastOutSlowInEasing))
-                )
-                .togetherWith(
-                  slideOutHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { width ->
-                    -direction * width / 6
-                  } +
-                    fadeOut(tween(160, easing = FastOutSlowInEasing)) +
-                    scaleOut(targetScale = 0.99f, animationSpec = tween(180, easing = FastOutSlowInEasing))
-                )
-                .using(SizeTransform(clip = false))
-            },
-            modifier = Modifier.weight(1f),
-          ) { tab ->
-            Box(modifier = Modifier.fillMaxSize()) {
-              when (tab) {
-                MainTab.Record -> RecordPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-                MainTab.Bills -> BillsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-                MainTab.Dashboard -> DashboardPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-                MainTab.Settings -> SettingsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
-              }
+                  fadeOut(tween(160, easing = FastOutSlowInEasing)) +
+                  scaleOut(targetScale = 0.99f, animationSpec = tween(180, easing = FastOutSlowInEasing))
+              )
+              .using(SizeTransform(clip = false))
+          },
+          modifier = Modifier.fillMaxSize(),
+        ) { tab ->
+          Box(modifier = Modifier.fillMaxSize()) {
+            when (tab) {
+              MainTab.Record -> RecordPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+              MainTab.Bills -> BillsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+              MainTab.Dashboard -> DashboardPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+              MainTab.Settings -> SettingsPane(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
             }
           }
         }
@@ -249,7 +246,7 @@ private fun MainScreenContent(
 }
 
 @Composable
-private fun Header(state: MainScreenUiState) {
+private fun Header(state: MainScreenUiState, drawerExpanded: Boolean, onToggleDrawer: () -> Unit) {
   val stats = state.dashboardStats
   val incomeTotal = stats.dailySeries.sumOf { it.incomeCents }
   val expenseTotal = stats.dailySeries.sumOf { it.expenseCents }
@@ -273,12 +270,13 @@ private fun Header(state: MainScreenUiState) {
             Modifier
               .size(48.dp)
               .clip(CircleShape)
-              .background(MaterialTheme.colorScheme.primaryContainer),
+              .background(MaterialTheme.colorScheme.primaryContainer)
+              .clickable { onToggleDrawer() },
           contentAlignment = Alignment.Center,
         ) {
           Icon(
             imageVector = Icons.Default.AccountBalanceWallet,
-            contentDescription = null,
+            contentDescription = if (drawerExpanded) "收起面板" else "展开面板",
             tint = MaterialTheme.colorScheme.onPrimaryContainer,
           )
         }
@@ -310,23 +308,31 @@ private fun Header(state: MainScreenUiState) {
           overflow = TextOverflow.Ellipsis,
         )
       }
-      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        SummaryMetric(
-          label = "收入",
-          value = "¥${incomeTotal.asYuanText()}",
-          icon = Icons.AutoMirrored.Filled.TrendingUp,
-          color = IncomeAccent,
-          modifier = Modifier.weight(1f),
-        )
-        SummaryMetric(
-          label = "支出",
-          value = "¥${expenseTotal.asYuanText()}",
-          icon = Icons.AutoMirrored.Filled.TrendingDown,
-          color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.weight(1f),
-        )
-      }
     }
+  }
+}
+
+@Composable
+private fun SummaryCard(state: MainScreenUiState) {
+  val stats = state.dashboardStats
+  val incomeTotal = stats.dailySeries.sumOf { it.incomeCents }
+  val expenseTotal = stats.dailySeries.sumOf { it.expenseCents }
+
+  Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+    SummaryMetric(
+      label = "收入",
+      value = "¥${incomeTotal.asYuanText()}",
+      icon = Icons.AutoMirrored.Filled.TrendingUp,
+      color = IncomeAccent,
+      modifier = Modifier.weight(1f),
+    )
+    SummaryMetric(
+      label = "支出",
+      value = "¥${expenseTotal.asYuanText()}",
+      icon = Icons.AutoMirrored.Filled.TrendingDown,
+      color = MaterialTheme.colorScheme.error,
+      modifier = Modifier.weight(1f),
+    )
   }
 }
 
@@ -370,7 +376,7 @@ private fun RecordPane(
   LazyColumn(
     modifier = modifier.fillMaxSize(),
     verticalArrangement = Arrangement.spacedBy(12.dp),
-    contentPadding = PaddingValues(bottom = 20.dp),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
   ) {
     item {
       SectionHeader(title = "快速记账", subtitle = "自然语言输入，Agent 自动判断消费或收入，支持多笔")
@@ -541,8 +547,9 @@ private fun BillsPane(
   LazyColumn(
     modifier = modifier.fillMaxSize(),
     verticalArrangement = Arrangement.spacedBy(12.dp),
-    contentPadding = PaddingValues(bottom = 20.dp),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
   ) {
+    item { BillsSummaryCard(state = state) }
     item { DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "账单日期") }
     item { SectionHeader(title = "账单明细", subtitle = "${state.entries.size} 条记录，长按可编辑") }
     if (state.entries.isEmpty()) {
@@ -573,6 +580,53 @@ private fun BillsPane(
         editingEntry = null
       },
     )
+  }
+}
+
+@Composable
+private fun BillsSummaryCard(state: MainScreenUiState) {
+  val stats = state.dashboardStats
+  val incomeTotal = stats.dailySeries.sumOf { it.incomeCents }
+  val expenseTotal = stats.dailySeries.sumOf { it.expenseCents }
+  val isNegative = state.totalText.startsWith("-")
+  val netColor = if (isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+  ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = AppCardShape,
+    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+  ) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("当前筛选净额", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+          netYuanText(state.totalText),
+          style = MaterialTheme.typography.headlineMedium,
+          fontWeight = FontWeight.Bold,
+          color = netColor,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      HorizontalDivider()
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SummaryMetric(
+          label = "收入",
+          value = "¥${incomeTotal.asYuanText()}",
+          icon = Icons.AutoMirrored.Filled.TrendingUp,
+          color = IncomeAccent,
+          modifier = Modifier.weight(1f),
+        )
+        SummaryMetric(
+          label = "支出",
+          value = "¥${expenseTotal.asYuanText()}",
+          icon = Icons.AutoMirrored.Filled.TrendingDown,
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.weight(1f),
+        )
+      }
+    }
   }
 }
 
@@ -745,10 +799,10 @@ private fun DashboardPane(
   LazyColumn(
     modifier = modifier.fillMaxSize(),
     verticalArrangement = Arrangement.spacedBy(12.dp),
-    contentPadding = PaddingValues(bottom = 20.dp),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
   ) {
     item {
-      DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "Dashboard 日期")
+      DateRangeSelector(filter = state.filter, onRangeChange = viewModel::updateFilter, title = "统计日期")
     }
     item {
       DashboardMetrics(
@@ -1214,7 +1268,7 @@ private fun SettingsPane(
   LazyColumn(
     modifier = modifier.fillMaxSize(),
     verticalArrangement = Arrangement.spacedBy(12.dp),
-    contentPadding = PaddingValues(bottom = 20.dp),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
   ) {
     item {
       SettingsSectionCard(title = "Agent 配置", icon = Icons.Default.Tune) {
@@ -1662,6 +1716,6 @@ private enum class QuickRange {
 private enum class MainTab(val title: String, val icon: ImageVector) {
   Record("记账", Icons.Default.AddCircle),
   Bills("账单", Icons.AutoMirrored.Filled.ReceiptLong),
-  Dashboard("Dashboard", Icons.Default.QueryStats),
+  Dashboard("统计", Icons.Default.QueryStats),
   Settings("设置", Icons.Default.Settings),
 }
