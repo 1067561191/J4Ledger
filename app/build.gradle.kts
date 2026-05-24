@@ -104,4 +104,7 @@ dependencies {
   // Charts
   implementation(libs.vico.compose)
   implementation(libs.vico.compose.m3)
+
+  // Excel parsing (WeChat bill import)
+  implementation("org.apache.poi:poi-ooxml:5.2.5")
 }

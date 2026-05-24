@@ -26,6 +26,8 @@ interface ExpenseAgent {
   suspend fun parseIncome(rawText: String, settings: AgentSettings): ExpenseParseResult
 
   suspend fun parseEntry(rawText: String, settings: AgentSettings): ExpenseParseResult
+
+  suspend fun classifyWechatBillCategories(records: List<WechatBillRecord>, settings: AgentSettings): Map<String, String>
 }
 
 class OpenAiCompatibleExpenseAgent(
@@ -367,6 +369,80 @@ class OpenAiCompatibleExpenseAgent(
       rawText = rawText,
       createdAtMillis = clock.millis(),
     )
+  }
+
+  override suspend fun classifyWechatBillCategories(records: List<WechatBillRecord>, settings: AgentSettings): Map<String, String> =
+    withContext(Dispatchers.IO) {
+      val uniqueKeys = records.map { it.uniqueKey }.distinct()
+      if (uniqueKeys.isEmpty()) return@withContext emptyMap()
+
+      val endpoint = settings.baseUrl.trimEnd('/').let { base ->
+        if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
+      }
+
+      val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 20_000
+        readTimeout = 60_000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
+      }
+
+      val taskText =
+        """
+        你是记账分类助手。根据微信账单记录的交易类型、交易对方和商品信息，判断每条记录的消费分类。
+
+        可选分类：餐饮、交通、购物、娱乐、居家、医疗、教育、旅行、转账、红包、其他
+
+        请为每条记录返回分类结果，格式为JSON对象，key为"交易类型-交易对方-商品"，value为分类名称。
+        示例：{"商户消费-美团-猪脚饭": "餐饮", "微信红包-发给rainbow-红包": "红包"}
+        """.trimIndent()
+
+      val recordsText = uniqueKeys.joinToString("\n") { key ->
+        val parts = key.split("-")
+        "- 交易类型: ${parts.getOrElse(0) { "" }}, 交易对方: ${parts.getOrElse(1) { "" }}, 商品: ${parts.getOrElse(2) { "" }}"
+      }
+
+      val requestBody = JSONObject()
+        .put("model", settings.modelName)
+        .put("temperature", 0.1)
+        .put(
+          "messages",
+          JSONArray()
+            .put(JSONObject().put("role", "system").put("content", taskText))
+            .put(JSONObject().put("role", "user").put("content", recordsText))
+        )
+
+      OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+        writer.write(requestBody.toString())
+      }
+
+      val responseText =
+        if (connection.responseCode in 200..299) {
+          connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } else {
+          val errorText = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+          error("HTTP ${connection.responseCode}: $errorText")
+        }
+
+      parseClassificationResponse(responseText)
+    }
+
+  private fun parseClassificationResponse(responseText: String): Map<String, String> {
+    val root = JSONObject(responseText)
+    val content = root.getJSONArray("choices")
+      .getJSONObject(0)
+      .getJSONObject("message")
+      .getString("content")
+
+    val jsonText = content.substringAfter("```json", content).substringBefore("```").trim()
+    val parsed = JSONObject(jsonText)
+    val result = mutableMapOf<String, String>()
+    parsed.keys().forEach { key ->
+      result[key] = parsed.getString(key)
+    }
+    return result
   }
 
   private fun AgentSettings.isConfigured(): Boolean =

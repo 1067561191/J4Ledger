@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -75,6 +77,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -114,6 +117,8 @@ import com.example.androidproject.data.LedgerEntry
 import com.example.androidproject.data.LedgerEntryType
 import com.example.androidproject.data.OpenAiCompatibleExpenseAgent
 import com.example.androidproject.data.SQLiteLedgerRepository
+import com.example.androidproject.data.WechatBillPreviewState
+import com.example.androidproject.data.WechatBillRecord
 import com.example.androidproject.data.asYuanText
 import com.example.androidproject.data.localDateTimeText
 import com.example.androidproject.data.toCents
@@ -1236,6 +1241,7 @@ private fun SettingsPane(
   var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
   var pendingImportBytes by remember { mutableStateOf<ByteArray?>(null) }
   var showImportConfirm by remember { mutableStateOf(false) }
+  val wechatBillPreview by viewModel.wechatBillPreview.collectAsStateWithLifecycle()
 
   val createDocumentLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -1262,6 +1268,16 @@ private fun SettingsPane(
             showImportConfirm = true
           }
           .onFailure { viewModel.setStatusMessage(it.message ?: "导入文件读取失败") }
+      }
+    }
+  val wechatBillLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      if (uri != null) {
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { viewModel.parseWechatBillExcel(it) }
+              ?: error("无法读取微信账单文件")
+          }
+          .onFailure { viewModel.setStatusMessage(it.message ?: "微信账单读取失败") }
       }
     }
 
@@ -1424,6 +1440,33 @@ private fun SettingsPane(
         )
       }
     }
+    item {
+      SettingsSectionCard(title = "导入微信账单", icon = Icons.Default.UploadFile) {
+        Text(
+          "从微信导出的账单 Excel 文件（.xlsx）中导入消费和收入记录。",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        PressableButton(
+          text = "选择微信账单文件",
+          icon = Icons.Default.UploadFile,
+          onClick = { wechatBillLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+          enabled = true,
+          containerColor = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.fillMaxWidth(),
+        )
+      }
+    }
+  }
+
+  val preview = wechatBillPreview
+  if (preview != null) {
+    WechatBillPreviewDialog(
+      preview = preview,
+      onToggleStatus = viewModel::toggleWechatBillStatusFilter,
+      onImport = viewModel::importSelectedWechatBillRecords,
+      onDismiss = viewModel::dismissWechatBillPreview,
+    )
   }
 
   if (showImportConfirm) {
@@ -1461,6 +1504,125 @@ private fun SettingsPane(
       },
     )
   }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WechatBillPreviewDialog(
+  preview: WechatBillPreviewState,
+  onToggleStatus: (String) -> Unit,
+  onImport: () -> Unit,
+  onDismiss: () -> Unit,
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text("导入微信账单") },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (preview.isClassifying) {
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text("正在通过 AI 分类账单...")
+          }
+        } else {
+          Text(
+            "共解析 ${preview.records.size} 条记录，请选择要导入的状态：",
+            style = MaterialTheme.typography.bodyMedium,
+          )
+          FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+          ) {
+            preview.statusOptions.forEach { status ->
+              FilterChip(
+                selected = status in preview.selectedStatuses,
+                onClick = { onToggleStatus(status) },
+                label = {
+                  val count = preview.records.count { it.status == status }
+                  Text("$status ($count)")
+                },
+              )
+            }
+          }
+          HorizontalDivider()
+          Text(
+            "已选择 ${preview.filteredRecords.size} 条记录",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+          )
+          LazyColumn(
+            modifier = Modifier.heightIn(max = 300.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+          ) {
+            items(preview.filteredRecords.take(50)) { record ->
+              val category = preview.categoryMap[record.uniqueKey] ?: "分类中..."
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    record.counterpart,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                  )
+                  Text(
+                    "${record.transactionType} · $category",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                }
+                Text(
+                  "${if (record.direction == "收入") "+" else "-"}¥${String.format("%.2f", record.amount)}",
+                  style = MaterialTheme.typography.bodySmall,
+                  fontWeight = FontWeight.SemiBold,
+                  color = if (record.direction == "收入") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                )
+              }
+            }
+            if (preview.filteredRecords.size > 50) {
+              item {
+                Text(
+                  "... 还有 ${preview.filteredRecords.size - 50} 条记录",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+              }
+            }
+          }
+        }
+        if (preview.isImporting) {
+          LinearProgressIndicator(
+            progress = { preview.importProgress },
+            modifier = Modifier.fillMaxWidth(),
+          )
+          Text(
+            "导入中... ${(preview.importProgress * 100).toInt()}%",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = onImport,
+        enabled = !preview.isClassifying && !preview.isImporting && preview.filteredRecords.isNotEmpty(),
+      ) {
+        Text("导入选中记录")
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("取消")
+      }
+    },
+  )
 }
 
 @Composable
